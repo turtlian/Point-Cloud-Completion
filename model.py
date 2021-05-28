@@ -14,14 +14,11 @@ class TopNet(nn.Module):
         super(TopNet, self).__init__()
         self.pcn_encoder = PCNencoder(feature_dim)
         self.decoder = nn.Sequential(
-
         )
 
     def forward(self, x):
-        x = self.feature_extractor(x)
-        x = torch.flatten(x, 1)
-        logits = self.classifier(x)
-        return logits
+
+        return x
 
 
 
