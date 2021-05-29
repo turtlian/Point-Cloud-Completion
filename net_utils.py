@@ -64,10 +64,11 @@ class decoder_mlp(nn.Module):
 
 # mlp for leaf node of decoder
 class decoder_mlp_conv(nn.Module):
-    def __init__(self,encoder_feature_dim, decoder_feature_dim, tree_arch):
+    def __init__(self,encoder_feature_dim, decoder_feature_dim, tree_arch, device):
         super(decoder_mlp_conv, self).__init__()
         self.decoder_feature_dim = decoder_feature_dim
         self.tree_arch = tree_arch
+        self.device = device
 
         self.hier_mlpconv_layers = []
         for i, num_node in enumerate(self.tree_arch[1:]):
@@ -90,7 +91,7 @@ class decoder_mlp_conv(nn.Module):
 
     def forward(self, x, feature):
         for i, num_node in enumerate(self.tree_arch[1:]):
-            x = self.hier_mlpconv_layers[i].cuda()(x)
+            x = self.hier_mlpconv_layers[i].cuda(self.device)(x)
             x = F.tanh(x)
             total_node = np.prod([int(k) for k in self.tree_arch[:i+2]])
             if i != len(self.tree_arch[1:])-1:
