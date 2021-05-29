@@ -113,7 +113,7 @@ def main():
     for epoch in range(1, args.epochs+1):
         train(network, train_loader, args.gpu_id, criterion ,optimizer, epoch, args.epochs, train_logger)
         test(network, val_loader, args.gpu_id ,criterion, epoch, args.epochs, val_logger)
-        torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,args.epochs))
+        torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,epoch))
     draw_curve(save_path, train_logger, val_logger)
     print("Process complete")
 
