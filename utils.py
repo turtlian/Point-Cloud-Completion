@@ -5,6 +5,7 @@ import random
 import math
 from matplotlib import pyplot as plt
 from collections import Iterable
+import torch
 
 # data
 def load_h5_file(path):
