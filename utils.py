@@ -16,6 +16,12 @@ def load_h5_file(path):
 
     return point_data
 
+def pc_normalize(pc):
+    centroid = np.mean(pc, axis=0)
+    pc = pc - centroid
+    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+    pc = pc / m
+    return pc
 
 def augmentation(partial, target, scale, rotation, mirror_prob):
     '''https://github.com/matthew-brett/transforms3d'''
@@ -176,5 +182,3 @@ def draw_curve(work_dir, train_logger, test_logger):
         plt.grid(True)
         plt.savefig(work_dir + '/loss_curve.png')
         plt.close()
-
-        
