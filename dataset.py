@@ -31,7 +31,7 @@ class ShapeNetDataset(Dataset):
         target = self.target_list[idx]
         point, target = augmentation(point, target, self.scaling, self.rotation, self.mirror_prob)
 
-        return torch.Tensor(point), torch.Tensor(target)
+        return torch.Tensor(point.T), torch.Tensor(target.T)
 
 # Kitti contains only test data
 # normalization
@@ -49,7 +49,7 @@ class KittiDataset(Dataset):
         return len(self.point_list)
 
     def __getitem__(self, idx):
-        point = self.point_list[idx]
+        point = self.point_list[idx].T
 
         return point
 
