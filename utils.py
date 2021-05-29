@@ -44,6 +44,7 @@ def plot_xyz(xyz, zdir='y', cmap='Reds', xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zli
     elev = 30
     azim = -45
     ax.view_init(elev, azim)
+    xyz = xyz.T
     ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:,2], c=xyz[:,0], s=20, zdir=zdir, cmap=cmap, vmin=-1, vmax=0.5)
     ax.set_axis_off()
     ax.set_xlim(xlim)
@@ -66,6 +67,7 @@ def plot_pcds(pcds, titles, use_color=[],color=None, suptitle='', sizes=None, cm
         azim = -45 + 90 * i
         for j, (pcd, size) in enumerate(zip(pcds, sizes)):
             if color is None or not use_color[j]:
+                pcd = pcd.T
                 clr = pcd[:, 0]
 
             ax = fig.add_subplot(1, len(pcds), i * len(pcds) + j + 1, projection='3d')
