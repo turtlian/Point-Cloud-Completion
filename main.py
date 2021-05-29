@@ -11,8 +11,6 @@ from utils import Logger, AverageMeter, draw_curve
 parser = argparse.ArgumentParser(description='Point Cloud Completion Project')
 parser.add_argument('--save_path', default='./exp2', type=str,
                     help='datapath')
-parser.add_argument('--data', default='shapenet', type=str,
-                    help='data')
 parser.add_argument('--data_path', default='./shapenet', type=str,
                     help='datapath')
 parser.add_argument('--model', default='topnet', type=str,
@@ -91,12 +89,9 @@ def main():
         # network = PCN()
 
     # load dataset
-    if args.data == 'shapenet':
-        train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', scaling = args.scaling,
-                                                rotation = args.rotation, mirror_prob = args.mirror_prob)
-        val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val')
-    elif args.data == 'kitti':
-        val_dataset = dataset.KittiDataset(args.data_path)
+    train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', scaling = args.scaling,
+                                            rotation = args.rotation, mirror_prob = args.mirror_prob)
+    val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val')
     print("Data Loaded")
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
