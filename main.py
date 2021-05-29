@@ -70,7 +70,7 @@ def test(model, tst_loader, device, criterion, epoch, num_epoch, val_logger):
 
         print("=================== TEST(Validation) Start ====================")
         print('Epoch : [{0}/{1}]  Test Loss : {loss:.4f}'.format(
-                epoch, num_epoch, loss=loss))
+                epoch, num_epoch, loss=val_loss.avg))
         print("=================== TEST(Validation) End ====================")
 
         val_logger.write([epoch, val_loss.avg])
