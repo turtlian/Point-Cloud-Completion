@@ -176,3 +176,5 @@ def draw_curve(work_dir, train_logger, test_logger):
         plt.grid(True)
         plt.savefig(work_dir + '/loss_curve.png')
         plt.close()
+
+        
