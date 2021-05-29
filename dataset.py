@@ -1,5 +1,5 @@
 import os
-from utils import load_h5_file, augmentation, plot_xyz, plot_pcds
+from utils import load_h5_file, augmentation, plot_xyz, plot_pcds, pc_normalize
 import torch
 from torch.utils.data import Dataset, DataLoader
 import open3d
@@ -29,6 +29,8 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         point = self.partial_list[idx]
         target = self.target_list[idx]
+        point[:, 0:3] = pc_normalize(point[:, 0:3])
+        target[:, 0:3] = pc_normalize(target[:, 0:3])
         point, target = augmentation(point, target, self.scaling, self.rotation, self.mirror_prob)
 
         return torch.Tensor(point.T), torch.Tensor(target.T)
@@ -49,9 +51,10 @@ class KittiDataset(Dataset):
         return len(self.point_list)
 
     def __getitem__(self, idx):
-        point = self.point_list[idx].T
-
-        return point
+        point = self.point_list[idx]
+        point[:, 0:3] = pc_normalize(point[:, 0:3])
+        
+        return point.T
 
 
 if __name__ == '__main__':
