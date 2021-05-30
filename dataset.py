@@ -8,7 +8,6 @@ import open3d
 
 class ShapeNetDataset(Dataset):
     def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None):
-
         self.mode = mode
         self.partial_list = []
         self.target_list = []
@@ -57,7 +56,6 @@ class ShapeNetDataset(Dataset):
 # normalization
 class KittiDataset(Dataset):
     def __init__(self, data_path):
-
         self.data_path = data_path
         self.data_list = os.listdir(os.path.join(self.data_path, 'cars'))
         self.point_list=[]
