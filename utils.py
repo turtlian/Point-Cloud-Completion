@@ -28,7 +28,7 @@ def augmentation(partial, target, scale, rotation, mirror_prob):
     transform_matrix = transforms3d.zooms.zfdir2mat(1)
 
     if scale is not None:
-        scaling_num = scale
+        scaling_num = random.uniform(1 / scale, scale)
         transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(scaling_num), transform_matrix)
     if rotation:
         angle = random.uniform(0, 2*math.pi)
@@ -182,3 +182,4 @@ def draw_curve(work_dir, train_logger, test_logger):
         plt.grid(True)
         plt.savefig(work_dir + '/loss_curve.png')
         plt.close()
+        
