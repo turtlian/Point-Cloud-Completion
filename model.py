@@ -1,12 +1,8 @@
-import torch
 import torch.nn as nn
-from net_utils import PCNencoder, decoder_mlp, decoder_mlp_conv, get_arch
-import torch.nn.functional as F
+from net_utils import PCNencoder, PCNdecoder, decoder_mlp, decoder_mlp_conv, get_arch
 from torchsummary import summary
-import numpy as np
 
-tree_arch = [2, 4, 4, 4, 4, 4]
-mlp_dim = [256, 64, 8]
+tree_arch = [2, 2, 2, 2, 2, 4, 4, 4]
 
 class TopNet(nn.Module):
     def __init__(self, encoder_feature_dim, decoder_feature_dim, npts):
@@ -30,6 +26,20 @@ class TopNet(nn.Module):
         return x
 
 
+class PCN(nn.Module):
+    def __init__(self, encoder_feature_dim, num_coarse, num_dense): # num_dense = npts
+        super(PCN, self).__init__()
+
+        self.encoder = PCNencoder(encoder_feature_dim)
+        self.decoder = PCNdecoder(num_coarse, num_dense)
+
+    def forward(self, x):
+        v = self.encoder(x)
+        y_coarse, y_detail = self.decoder(v)
+        return v, y_coarse, y_detail
+
+
 if __name__ == '__main__':
-    model = TopNet(1024, 8, 16384).cuda()
+    # model = TopNet(1024, 8, 16384).cuda()
+    model = PCN(1024, 1024, 16384).cuda()
     summary(model, (3,2048))
