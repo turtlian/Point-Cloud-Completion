@@ -10,26 +10,35 @@ class ShapeNetDataset(Dataset):
     def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None):
 
         self.mode = mode
-        self.data_path = data_path
         self.partial_list = []
         self.target_list = []
         self.rotation = rotation
         self.mirror_prob = mirror_prob
         self.scaling = scaling
 
-        classmap = pd.read_csv(data_path+'/synsetoffset2category.txt', header=None, sep = '\t')
-        class_dict = {}
-        for i in range(classmap.shape[0]):
-            class_dict[classmap[0][i]] = str(classmap[1][i]).zfill(8)
+        if point_class != 'all':
+            self.data_path = data_path
+            classmap = pd.read_csv(data_path+'/synsetoffset2category.txt', header=None, sep = '\t')
+            class_dict = {}
+            for i in range(classmap.shape[0]):
+                class_dict[classmap[0][i]] = str(classmap[1][i]).zfill(8)
 
-        self.partial_path_list = os.path.join(data_path, mode, 'partial', class_dict[point_class])
-        self.partial_path_list = sorted([os.path.join(self.partial_path_list, k) for k in os.listdir(self.partial_path_list)])
-        self.target_path_list = os.path.join(data_path, mode, 'gt', class_dict[point_class])
-        self.target_path_list = sorted([os.path.join(self.target_path_list, k) for k in os.listdir(self.target_path_list)])
+            self.partial_path_list = os.path.join(data_path, mode, 'partial', class_dict[point_class])
+            self.partial_path_list = sorted([os.path.join(self.partial_path_list, k) for k in os.listdir(self.partial_path_list)])
+            self.target_path_list = os.path.join(data_path, mode, 'gt', class_dict[point_class])
+            self.target_path_list = sorted([os.path.join(self.target_path_list, k) for k in os.listdir(self.target_path_list)])
 
-        for i, path in enumerate(self.partial_path_list):
-            self.partial_list.append(load_h5_file(path))
-            self.target_list.append(load_h5_file(self.target_path_list[i]))
+            for i, path in enumerate(self.partial_path_list):
+                self.partial_list.append(load_h5_file(path))
+                self.target_list.append(load_h5_file(self.target_path_list[i]))
+        else :
+            self.data_path = os.path.join(data_path, self.mode + '.list')
+            with open(self.data_path, 'r') as f:
+                for line in f:
+                    partial = os.path.join(data_path, self.mode, 'partial', line.rstrip() + '.h5')
+                    target = os.path.join(data_path, self.mode, 'gt', line.rstrip() + '.h5')
+                    self.partial_list.append(load_h5_file(partial))
+                    self.target_list.append(load_h5_file(target))
 
     def __len__(self):
         return len(self.partial_list)
@@ -73,7 +82,7 @@ if __name__ == '__main__':
 
     train_dataset = ShapeNetDataset(data_dir_train, mode='train')
     train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-    
+
     for input, target in train_loader:
         print(input)
         print(target)
