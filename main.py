@@ -8,12 +8,17 @@ import argparse
 import torch.optim as optim
 from utils import Logger, AverageMeter, draw_curve
 import json
+from torch.optim import lr_scheduler
 
 parser = argparse.ArgumentParser(description='Point Cloud Completion Project')
-parser.add_argument('--save_path', default='./exp2', type=str,
+parser.add_argument('--save_path', default='./exp', type=str,
                     help='datapath')
 parser.add_argument('--data_path', default='./shapenet', type=str,
                     help='datapath')
+parser.add_argument('--p_class', default='plane', type=str,
+                    help='class')
+parser.add_argument('--npts', default=16384, type=int,
+                    help='number of points generated')
 parser.add_argument('--model', default='topnet', type=str,
                     help='topnet or pcn')
 parser.add_argument('--embedding_dim', default=1024, type=int,
@@ -22,7 +27,7 @@ parser.add_argument('--batch_size', default=64, type=int,
                     help='batch size')
 parser.add_argument('--optim', default='adam', type=str,
                     help='optimizer')
-parser.add_argument('--lr', default=0.5e-2, type=float,
+parser.add_argument('--lr', default=0.1e-2, type=float,
                     help='learning rate')
 parser.add_argument('--epochs', default=300, type=int,
                     help='train epoch')
@@ -34,17 +39,14 @@ parser.add_argument('--rotation', default=False, type=bool,
                     help='If "true", randomly rotate the point')
 parser.add_argument('--mirror_prob', default=None, type=float,
                     help='Probability of randomly mirroring points')
-parser.add_argument('--gpu_id', default=7, type=int,
-                    help='gpu')
+parser.add_argument('--gpu_id', default='1', type=str, help='devices')
 args = parser.parse_args()
 
-def train(model, trn_loader, device, criterion, optimizer, epoch, num_epoch, train_logger):
-    model.cuda(device)
-    criterion.cuda(device)
+def train(model, trn_loader, criterion, optimizer, epoch, num_epoch, train_logger):
     model.train()
     train_loss = AverageMeter()
     for i, (data, target) in enumerate(trn_loader):
-        data, target = data.cuda(device), target.cuda(device)
+        data, target = data.cuda(), target.cuda()
         output = model(data)
         loss, _ = criterion(output.transpose(1,2), target.transpose(1,2))
         train_loss.update(loss.item()*10000)
@@ -57,14 +59,12 @@ def train(model, trn_loader, device, criterion, optimizer, epoch, num_epoch, tra
                 epoch, num_epoch, i, len(trn_loader), loss=loss*10000))
     train_logger.write([epoch, train_loss.avg])
 
-def test(model, tst_loader, device, criterion, epoch, num_epoch, val_logger):
-    model.cuda(device)
-    criterion.cuda(device)
+def test(model, tst_loader, criterion, epoch, num_epoch, val_logger):
     model.eval()
     val_loss = AverageMeter()
     with torch.no_grad():
         for i, (data, target) in enumerate(tst_loader):
-            data, target = data.cuda(device), target.cuda(device)
+            data, target = data.cuda(), target.cuda()
             output = model(data)
             loss, _ = criterion(output.transpose(1,2), target.transpose(1,2))
             val_loss.update(loss.item()*10000)
@@ -83,25 +83,27 @@ def main():
         # Save configuration
         with open(save_path + '/configuration.json', 'w') as f:
             json.dump(args.__dict__, f, indent=2)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
     # define architecture
     if args.model == 'topnet':
-        network = TopNet(encoder_feature_dim = args.embedding_dim, device = args.gpu_id)
+        network = TopNet(encoder_feature_dim = args.embedding_dim, decoder_feature_dim = 8, npts = args.npts).cuda()
     else:
         network = None
         print("pcn")
         # network = PCN()
 
     # load dataset
-    train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', scaling = args.scaling,
+    train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', point_class = args.p_class,scaling = args.scaling,
                                             rotation = args.rotation, mirror_prob = args.mirror_prob)
-    val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val')
-    print("Data Loaded")
+    val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val', point_class = args.p_class)
+
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+    print(f"Data Loaded {args.p_class} : {len(train_dataset)}")
 
     # define criterion
-    criterion = chamfer_distance()
+    criterion = chamfer_distance().cuda()
     if args.optim == 'sgd':
         optimizer = optim.SGD(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == 'adam':
@@ -109,14 +111,17 @@ def main():
     elif args.optim == 'adagrad':
         optimizer = optim.Adagrad(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[100, 200], gamma=0.5)
+
     # logger
     train_logger = Logger(os.path.join(save_path, 'train_loss.log'))
     val_logger = Logger(os.path.join(save_path, 'val_loss.log'))
 
     # training & validation
     for epoch in range(1, args.epochs+1):
-        train(network, train_loader, args.gpu_id, criterion ,optimizer, epoch, args.epochs, train_logger)
-        test(network, val_loader, args.gpu_id ,criterion, epoch, args.epochs, val_logger)
+        train(network, train_loader, criterion ,optimizer, epoch, args.epochs, train_logger)
+        test(network, val_loader, criterion, epoch, args.epochs, val_logger)
+        scheduler.step()
         if epoch%20 ==0:
             torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,epoch))
     draw_curve(save_path, train_logger, val_logger)
