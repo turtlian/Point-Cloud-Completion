@@ -49,14 +49,17 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         point = self.partial_list[idx]
         target = self.target_list[idx]
-
+        # normalizing
         point[:, 0:3] = pc_normalize(point[:, 0:3])
         target[:, 0:3] = pc_normalize(target[:, 0:3])
-
+        # sub sampling
         choice = np.random.choice(len(point), self.num_coarse, replace = True)
         coarse_gt = target[choice, : ]
         dense_gt = resample_pcd(target, self.num_dense)
-        point, target = augmentation(point, target, self.scaling, self.rotation, self.mirror_prob)
+        # augmentation
+        augmentation_matrix = augmentation(self.scaling, self.rotation, self.mirror_prob)
+        point = np.dot(point, augmentation_matrix) ; target = np.dot(target, augmentation_matrix)
+        coarse_gt = np.doat(coarse_gt, augmentation_matrix) ; dense_gt = np.doat(dense_gt, augmentation_matrix)
 
         return torch.Tensor(point.T), torch.Tensor(target.T), torch.Tensor(coarse_gt.T), torch.Tensor(dense_gt.T)
 
