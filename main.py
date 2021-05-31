@@ -73,7 +73,7 @@ def test(model, tst_loader, criterion, epoch, num_epoch, val_logger):
     model.eval()
     val_loss = AverageMeter()
     with torch.no_grad():
-        for i, (data, target) in enumerate(tst_loader):
+        for i, (data, target, coarsegt, densegt) in enumerate(tst_loader):
             data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
             output = model(data)
             if args.model == 'topnet':
