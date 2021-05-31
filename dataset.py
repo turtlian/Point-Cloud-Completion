@@ -74,7 +74,7 @@ class KittiDataset(Dataset):
         self.point_list=[]
         for i in self.data_list:
             point = open3d.io.read_point_cloud(os.path.join(self.data_path,'cars',i)).points
-            self.point_list.append(torch.Tensor(point))
+            self.point_list.append(np.asarray(point))
 
     def __len__(self):
         return len(self.point_list)
@@ -83,7 +83,7 @@ class KittiDataset(Dataset):
         point = self.point_list[idx]
         point[:, 0:3] = pc_normalize(point[:, 0:3])
 
-        return point.T
+        return torch.Tensor(point.T)
 
 
 if __name__ == '__main__':
