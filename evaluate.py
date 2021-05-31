@@ -44,6 +44,7 @@ if args.data == 'shapenet':
                                            num_coarse = num_coarse, num_dense = npts)
 elif args.data == 'kitti':
     test_dataset = dataset.KittiDataset(args.data_path)
+    args.p_class = 'kitti'
 
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4)
 
@@ -66,14 +67,12 @@ def visualization():
         os.makedirs(os.path.join(save_path, 'target_points', args.p_class))
         os.makedirs(os.path.join(save_path, 'pred_points', args.p_class))
     if args.data == 'kitti':
-        for i, (data, target) in enumerate(test_loader):
-            data, target = data.cuda(), target
+        for i, data in enumerate(test_loader):
+            data = data.cuda()
             output = network(data)
             if model == 'pcn':
                 output = output[2]
             plot_xyz(data.detach().cpu(), save_path='{0}/{1}/{2}/{3}.png'.format(save_path, 'input_points', args.p_class, i),
-                     xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-            plot_xyz(target, save_path ='{0}/{1}/{2}/{3}.png'.format(save_path, 'target_points', args.p_class, i),
                      xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
             plot_xyz(output.detach().cpu(), save_path ='{0}/{1}/{2}/{3}.png'.format(save_path, 'pred_points', args.p_class, i),
                      xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
