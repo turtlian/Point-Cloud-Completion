@@ -1,19 +1,23 @@
 import os
-from utils import load_h5_file, augmentation, plot_xyz, plot_pcds, pc_normalize
+from utils import load_h5_file, augmentation, resample_pcd, plot_xyz, plot_pcds, pc_normalize
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import open3d
-
+import numpy as np
 
 class ShapeNetDataset(Dataset):
-    def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None):
+    def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None,
+                 num_coarse = 1024, num_dense = 16384):
+
         self.mode = mode
         self.partial_list = []
         self.target_list = []
         self.rotation = rotation
         self.mirror_prob = mirror_prob
         self.scaling = scaling
+        self.num_coarse = num_coarse
+        self.num_dense = num_dense
 
         if point_class != 'all':
             self.data_path = data_path
@@ -48,14 +52,20 @@ class ShapeNetDataset(Dataset):
 
         point[:, 0:3] = pc_normalize(point[:, 0:3])
         target[:, 0:3] = pc_normalize(target[:, 0:3])
+
+        choice = np.random.choice(len(point), self.num_coarse, replace = True)
+        coarse_gt = target[choice, : ]
+        dense_gt = resample_pcd(target, self.num_dense)
         point, target = augmentation(point, target, self.scaling, self.rotation, self.mirror_prob)
 
-        return torch.Tensor(point.T), torch.Tensor(target.T)
+        return torch.Tensor(point.T), torch.Tensor(target.T), torch.Tensor(coarse_gt.T), torch.Tensor(dense_gt.T)
+
 
 # Kitti contains only test data
 # normalization
 class KittiDataset(Dataset):
     def __init__(self, data_path):
+
         self.data_path = data_path
         self.data_list = os.listdir(os.path.join(self.data_path, 'cars'))
         self.point_list=[]
@@ -81,7 +91,7 @@ if __name__ == '__main__':
     train_dataset = ShapeNetDataset(data_dir_train, mode='train')
     train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
 
-    for input, target in train_loader:
+    for input, target, coarse, dense in train_loader:
         print(input)
         print(target)
         plot_xyz(input[0], save_path='./plot_xyz_trn.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
