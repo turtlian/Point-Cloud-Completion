@@ -49,14 +49,14 @@ args = parser.parse_args()
 def train(model, trn_loader, criterion, optimizer, epoch, num_epoch, train_logger):
     model.train()
     train_loss = AverageMeter()
-    for i, (data, target) in enumerate(trn_loader):
-        data, target = data.cuda(), target.cuda()
+    for i, (data, target, coarsegt, densegt) in enumerate(trn_loader):
+        data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
         output = model(data)
         if args.model == 'topnet':
-            loss, _ = criterion(output.transpose(1,2), target.transpose(1,2))
+            loss, _ = criterion(output.transpose(1,2), densegt.transpose(1,2))
         elif args.model == 'pcn':
-            loss1, _ = criterion(output[1].transpose(1,2), target.transpose(1,2))
-            loss2, _ = criterion(output[2].transpose(1, 2), target.transpose(1, 2))
+            loss1, _ = criterion(output[1].transpose(1,2), coarsegt.transpose(1,2))
+            loss2, _ = criterion(output[2].transpose(1, 2), densegt.transpose(1, 2))
             loss = args.alpha * loss1 + loss2
         train_loss.update(loss.item()*10000)
         optimizer.zero_grad()
@@ -74,13 +74,13 @@ def test(model, tst_loader, criterion, epoch, num_epoch, val_logger):
     val_loss = AverageMeter()
     with torch.no_grad():
         for i, (data, target) in enumerate(tst_loader):
-            data, target = data.cuda(), target.cuda()
+            data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
             output = model(data)
             if args.model == 'topnet':
-                loss, _ = criterion(output.transpose(1, 2), target.transpose(1, 2))
+                loss, _ = criterion(output.transpose(1, 2), densegt.transpose(1, 2))
             elif args.model == 'pcn':
-                loss1, _ = criterion(output[1].transpose(1, 2), target.transpose(1, 2))
-                loss2, _ = criterion(output[2].transpose(1, 2), target.transpose(1, 2))
+                loss1, _ = criterion(output[1].transpose(1, 2), coarsegt.transpose(1, 2))
+                loss2, _ = criterion(output[2].transpose(1, 2), densegt.transpose(1, 2))
                 loss = args.alpha * loss1 + loss2
             val_loss.update(loss.item()*10000)
 
@@ -110,7 +110,7 @@ def main():
     # load dataset
     train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', point_class = 'all',
                                             scaling = args.scaling, rotation = args.rotation,
-                                            mirror_prob = args.mirror_prob)
+                                            mirror_prob = args.mirror_prob, num_coarse = args.coarse, num_dense = args.npts)
     val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val', point_class = 'all')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
@@ -126,7 +126,7 @@ def main():
     elif args.optim == 'adagrad':
         optimizer = optim.Adagrad(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    # scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[50, 150], gamma=0.5)
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], gamma=0.7)
 
     # logger
     train_logger = Logger(os.path.join(save_path, 'train_loss.log'))
@@ -136,8 +136,8 @@ def main():
     for epoch in range(1, args.epochs+1):
         train(network, train_loader, criterion ,optimizer, epoch, args.epochs, train_logger)
         test(network, val_loader, criterion, epoch, args.epochs, val_logger)
-        # scheduler.step()
-        if epoch%20 ==0:
+        scheduler.step()
+        if epoch%20 == 0 or epoch == args.epoch :
             torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,epoch))
     draw_curve(save_path, train_logger, val_logger)
     print("Process complete")
