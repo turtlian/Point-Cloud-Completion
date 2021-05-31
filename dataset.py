@@ -85,31 +85,4 @@ class KittiDataset(Dataset):
         point[:, 0:3] = pc_normalize(point[:, 0:3])
 
         return torch.Tensor(point.T)
-
-
-if __name__ == '__main__':
-    data_dir_train = './kitti'
-
-    # train_dataset = PointDataset(data_dir_train, 'train', scaling=2, rotation=True, mirror_prob=0.4)
-
-    kitti_dataset = KittiDataset(data_dir_train)
-    kitti_loader = DataLoader(kitti_dataset, batch_size=1, shuffle=False)
-
-    #train_dataset = ShapeNetDataset(data_dir_train, mode='train')
-    #train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False)
-
-    #train_dataset2 = ShapeNetDataset(data_dir_train, mode='train', mirror_prob=2)
-    #train_loader2 = DataLoader(train_dataset2, batch_size=2, shuffle=False)
-
-    # for input, target, coarse, dense in train_loader:
-    #
-    #     plot_xyz(input[0], save_path='./plot_xyz_input.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-    #     plot_xyz(target[0], save_path='./plot_xyz_target.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-    #     plot_xyz(coarse[0], save_path='./plot_xyz_coarse.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-    #     plot_xyz(dense[0], save_path='./plot_xyz_dense.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-    #     import pdb;pdb.set_trace()
-
-    for input in kitti_loader:
-
-        plot_xyz(input[0], save_path='./kitti.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-        import pdb;pdb.set_trace()
+    
