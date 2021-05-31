@@ -1,101 +1,192 @@
-import os
-from utils import load_h5_file, augmentation, resample_pcd, plot_xyz, plot_pcds, pc_normalize
-import torch
-from torch.utils.data import Dataset, DataLoader
-import pandas as pd
-import open3d
+import h5py
 import numpy as np
+import transforms3d
+import random
+import math
+from matplotlib import pyplot as plt
+from collections import Iterable
+import torch
 
-class ShapeNetDataset(Dataset):
-    def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None,
-                 num_coarse = 1024, num_dense = 16384):
+# data
+def load_h5_file(path):
+    '''Load point cloud data from h5 file'''
+    f = h5py.File(path, 'r')
+    point_data = np.array(f['data'], dtype = np.float64)
+    f.close()
 
-        self.mode = mode
-        self.partial_list = []
-        self.target_list = []
-        self.rotation = rotation
-        self.mirror_prob = mirror_prob
-        self.scaling = scaling
-        self.num_coarse = num_coarse
-        self.num_dense = num_dense
+    return point_data
 
-        if point_class != 'all':
-            self.data_path = data_path
-            classmap = pd.read_csv(data_path+'/synsetoffset2category.txt', header=None, sep = '\t')
-            class_dict = {}
-            for i in range(classmap.shape[0]):
-                class_dict[classmap[0][i]] = str(classmap[1][i]).zfill(8)
+def pc_normalize(pc):
+    centroid = np.mean(pc, axis=0)
+    pc = pc - centroid
+    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+    pc = pc / m
+    return pc
 
-            self.partial_path_list = os.path.join(data_path, mode, 'partial', class_dict[point_class])
-            self.partial_path_list = sorted([os.path.join(self.partial_path_list, k) for k in os.listdir(self.partial_path_list)])
-            self.target_path_list = os.path.join(data_path, mode, 'gt', class_dict[point_class])
-            self.target_path_list = sorted([os.path.join(self.target_path_list, k) for k in os.listdir(self.target_path_list)])
+def augmentation(scale, rotation, mirror_prob):
+    '''https://github.com/matthew-brett/transforms3d'''
+    transform_matrix = transforms3d.zooms.zfdir2mat(1)
 
-            for i, path in enumerate(self.partial_path_list):
-                self.partial_list.append(load_h5_file(path))
-                self.target_list.append(load_h5_file(self.target_path_list[i]))
-        else :
-            self.data_path = os.path.join(data_path, self.mode + '.list')
-            with open(self.data_path, 'r') as f:
-                for line in f:
-                    partial = os.path.join(data_path, self.mode, 'partial', line.rstrip() + '.h5')
-                    target = os.path.join(data_path, self.mode, 'gt', line.rstrip() + '.h5')
-                    self.partial_list.append(load_h5_file(partial))
-                    self.target_list.append(load_h5_file(target))
+    if scale is not None:
+        scaling_num = random.uniform(1 / scale, scale)
+        transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(scaling_num), transform_matrix)
+    if rotation:
+        angle = random.uniform(0, 2*math.pi)
+        transform_matrix = np.dot(transforms3d.axangles.axangle2mat([0,1,0], angle), transform_matrix) #fix y-axis
+    if mirror_prob is not None:
+        # mirroring x&z, not y
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [1,0,0]), transform_matrix)
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
+
+    return transform_matrix
+
+def resample_pcd(pcd, n):
+    """Drop or duplicate points so that pcd has exactly n points"""
+    idx = np.random.permutation(pcd.shape[0])
+    if idx.shape[0] < n:
+        idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
+    return pcd[idx[:n]]
+
+
+# visualization
+'''https://github.com/lynetcha/completion3d/blob/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7/shared/vis.py'''
+
+def plot_xyz(xyz, zdir='y', cmap='Reds', xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    elev = 30
+    azim = -45
+    ax.view_init(elev, azim)
+    xyz = xyz.T
+    ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:,2], c=xyz[:,0], s=20, zdir=zdir, cmap=cmap, vmin=-1, vmax=0.5)
+    ax.set_axis_off()
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_zlim(zlim)
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
+    if save_path is not None:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
+
+def plot_pcds(pcds, titles, use_color=[],color=None, suptitle='', sizes=None, cmap='Reds', zdir='y',
+                         xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
+    if sizes is None:
+        sizes = [5 for i in range(len(pcds))]
+    fig = plt.figure(figsize=(len(pcds) * 3, 3))
+    for i in range(1):
+        elev = 30
+        azim = -45 + 90 * i
+        for j, (pcd, size) in enumerate(zip(pcds, sizes)):
+            if color is None or not use_color[j]:
+                pcd = pcd.T
+                clr = pcd[:, 0]
+
+            ax = fig.add_subplot(1, len(pcds), i * len(pcds) + j + 1, projection='3d')
+            ax.view_init(elev, azim)
+            ax.scatter(pcd[:, 0], pcd[:, 1], pcd[:, 2], zdir=zdir, c=clr, s=size, cmap=cmap, vmin=-1, vmax=0.5)
+            ax.set_title(titles[j])
+            ax.set_axis_off()
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.set_zlim(zlim)
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
+    plt.suptitle(suptitle)
+    if save_path is not None:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+# logging
+class AverageMeter(object):
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.sum_2 = 0  # sum of squares
+        self.count = 0
+        self.std = 0
+
+    def update(self, val, n=1):
+        if val != None:  # update if val is not None
+            self.val = val
+            self.sum += val * n
+            self.sum_2 += val ** 2 * n
+            self.count += n
+            self.avg = self.sum / self.count
+            self.std = np.sqrt(self.sum_2 / self.count - self.avg ** 2)
+        else:
+            pass
+
+
+class Logger(object):
+    def __init__(self, path, int_form=':03d', float_form=':.4f'):
+        self.path = path
+        self.int_form = int_form
+        self.float_form = float_form
+        self.width = 0
 
     def __len__(self):
-        return len(self.partial_list)
+        try:
+            return len(self.read())
+        except:
+            return 0
 
-    def __getitem__(self, idx):
-        point = self.partial_list[idx]
-        target = self.target_list[idx]
-        # normalizing
-        point[:, 0:3] = pc_normalize(point[:, 0:3])
-        target[:, 0:3] = pc_normalize(target[:, 0:3])
-        # sub sampling
-        choice = np.random.choice(len(point), self.num_coarse, replace = True)
-        coarse_gt = target[choice, : ]
-        dense_gt = resample_pcd(target, self.num_dense)
-        # augmentation
-        augmentation_matrix = augmentation(self.scaling, self.rotation, self.mirror_prob)
-        point = np.dot(point, augmentation_matrix) ; target = np.dot(target, augmentation_matrix)
-        coarse_gt = np.doat(coarse_gt, augmentation_matrix) ; dense_gt = np.doat(dense_gt, augmentation_matrix)
+    def write(self, values):
+        if not isinstance(values, Iterable):
+            values = [values]
+        if self.width == 0:
+            self.width = len(values)
+        assert self.width == len(values), 'Inconsistent number of items.'
+        line = ''
+        for v in values:
+            if isinstance(v, int):
+                line += '{{{}}} '.format(self.int_form).format(v)
+            elif isinstance(v, float):
+                line += '{{{}}} '.format(self.float_form).format(v)
+            elif isinstance(v, str):
+                line += '{} '.format(v)
+            else:
+                raise Exception('Not supported type.', v)
+        with open(self.path, 'a') as f:
+            f.write(line[:-1] + '\n')
 
-        return torch.Tensor(point.T), torch.Tensor(target.T), torch.Tensor(coarse_gt.T), torch.Tensor(dense_gt.T)
+    def read(self):
+        with open(self.path, 'r') as f:
+            log = []
+            for line in f:
+                values = []
+                for v in line.split(' '):
+                    try:
+                        v = float(v)
+                    except:
+                        pass
+                    values.append(v)
+                log.append(values)
+        return log
 
+def draw_curve(work_dir, train_logger, test_logger):
+        train_logger = train_logger.read()
+        test_logger = test_logger.read()
+        epoch, train_loss = zip(*train_logger)
+        epoch,test_loss = zip(*test_logger)
 
-# Kitti contains only test data
-# normalization
-class KittiDataset(Dataset):
-    def __init__(self, data_path):
+        plt.plot(epoch, train_loss, color='blue', label="Train Loss")
+        plt.plot(epoch, test_loss, color='red', label="Test Loss")
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title("Loss Curve")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(work_dir + '/loss_curve.png')
+        plt.close()
 
-        self.data_path = data_path
-        self.data_list = os.listdir(os.path.join(self.data_path, 'cars'))
-        self.point_list=[]
-        for i in self.data_list:
-            point = open3d.io.read_point_cloud(os.path.join(self.data_path,'cars',i)).points
-            self.point_list.append(torch.Tensor(point))
-
-    def __len__(self):
-        return len(self.point_list)
-
-    def __getitem__(self, idx):
-        point = self.point_list[idx]
-        point[:, 0:3] = pc_normalize(point[:, 0:3])
-
-        return point.T
-
-
-if __name__ == '__main__':
-    data_dir_train = './shapenet'
-
-    # train_dataset = PointDataset(data_dir_train, 'train', scaling=2, rotation=True, mirror_prob=0.4)
-
-    train_dataset = ShapeNetDataset(data_dir_train, mode='train')
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
-
-    for input, target, coarse, dense in train_loader:
-        print(input)
-        print(target)
-        plot_xyz(input[0], save_path='./plot_xyz_trn.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
-        import pdb;pdb.set_trace()
