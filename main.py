@@ -137,7 +137,7 @@ def main():
         train(network, train_loader, criterion ,optimizer, epoch, args.epochs, train_logger)
         test(network, val_loader, criterion, epoch, args.epochs, val_logger)
         scheduler.step()
-        if epoch%20 == 0 or epoch == args.epoch :
+        if epoch%20 == 0 or epoch == args.epochs :
             torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,epoch))
     draw_curve(save_path, train_logger, val_logger)
     print("Process complete")
