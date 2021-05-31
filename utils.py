@@ -42,6 +42,13 @@ def augmentation(partial, target, scale, rotation, mirror_prob):
 
     return np.dot(partial, transform_matrix), np.dot(target, transform_matrix)
 
+def resample_pcd(pcd, n):
+    """Drop or duplicate points so that pcd has exactly n points"""
+    idx = np.random.permutation(pcd.shape[0])
+    if idx.shape[0] < n:
+        idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
+    return pcd[idx[:n]]
+
 
 # visualization
 '''https://github.com/lynetcha/completion3d/blob/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7/shared/vis.py'''
@@ -182,4 +189,3 @@ def draw_curve(work_dir, train_logger, test_logger):
         plt.grid(True)
         plt.savefig(work_dir + '/loss_curve.png')
         plt.close()
-        
