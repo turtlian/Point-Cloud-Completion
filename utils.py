@@ -23,7 +23,7 @@ def pc_normalize(pc):
     pc = pc / m
     return pc
 
-def augmentation(partial, target, scale, rotation, mirror_prob):
+def augmentation(scale, rotation, mirror_prob):
     '''https://github.com/matthew-brett/transforms3d'''
     transform_matrix = transforms3d.zooms.zfdir2mat(1)
 
@@ -34,13 +34,13 @@ def augmentation(partial, target, scale, rotation, mirror_prob):
         angle = random.uniform(0, 2*math.pi)
         transform_matrix = np.dot(transforms3d.axangles.axangle2mat([0,1,0], angle), transform_matrix) #fix y-axis
     if mirror_prob is not None:
-        # mirroring x&z, not y
+        # flip x&z, not z
         if random.random() < mirror_prob/2:
             transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [1,0,0]), transform_matrix)
         if random.random() < mirror_prob/2:
             transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
 
-    return np.dot(partial, transform_matrix), np.dot(target, transform_matrix)
+    return transform_matrix
 
 def resample_pcd(pcd, n):
     """Drop or duplicate points so that pcd has exactly n points"""
