@@ -7,7 +7,7 @@ import open3d
 import numpy as np
 
 class ShapeNetDataset(Dataset):
-    def __init__(self, data_path, point_class='plane', mode='train', scaling=None, rotation=False, mirror_prob=None,
+    def __init__(self, data_path, point_class='all', mode='train', scaling=None, rotation=False, mirror_prob=None,
                  num_coarse = 1024, num_dense = 16384):
 
         self.mode = mode
@@ -49,18 +49,19 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         point = self.partial_list[idx]
         target = self.target_list[idx]
+        
+        # augmentation
+        augmentation_matrix = augmentation(self.scaling, self.rotation, self.mirror_prob)
+        point = np.dot(point, augmentation_matrix)
+        target = np.dot(target, augmentation_matrix)
         # normalizing
         point[:, 0:3] = pc_normalize(point[:, 0:3])
         target[:, 0:3] = pc_normalize(target[:, 0:3])
         # sub sampling
-        choice = np.random.choice(len(point), self.num_coarse, replace = True)
-        coarse_gt = target[choice, : ]
+        choice = np.random.choice(len(point), self.num_coarse, replace=True)
+        coarse_gt = target[choice, :]
         dense_gt = resample_pcd(target, self.num_dense)
-        # augmentation
-        augmentation_matrix = augmentation(self.scaling, self.rotation, self.mirror_prob)
-        point = np.dot(point, augmentation_matrix) ; target = np.dot(target, augmentation_matrix)
-        coarse_gt = np.dot(coarse_gt, augmentation_matrix) ; dense_gt = np.dot(dense_gt, augmentation_matrix)
-
+        
         return torch.Tensor(point.T), torch.Tensor(target.T), torch.Tensor(coarse_gt.T), torch.Tensor(dense_gt.T)
 
 
@@ -87,15 +88,28 @@ class KittiDataset(Dataset):
 
 
 if __name__ == '__main__':
-    data_dir_train = './shapenet'
+    data_dir_train = './kitti'
 
     # train_dataset = PointDataset(data_dir_train, 'train', scaling=2, rotation=True, mirror_prob=0.4)
 
-    train_dataset = ShapeNetDataset(data_dir_train, mode='train')
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True)
+    kitti_dataset = KittiDataset(data_dir_train)
+    kitti_loader = DataLoader(kitti_dataset, batch_size=1, shuffle=False)
 
-    for input, target, coarse, dense in train_loader:
-        print(input)
-        print(target)
-        plot_xyz(input[0], save_path='./plot_xyz_trn.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    #train_dataset = ShapeNetDataset(data_dir_train, mode='train')
+    #train_loader = DataLoader(train_dataset, batch_size=2, shuffle=False)
+
+    #train_dataset2 = ShapeNetDataset(data_dir_train, mode='train', mirror_prob=2)
+    #train_loader2 = DataLoader(train_dataset2, batch_size=2, shuffle=False)
+
+    # for input, target, coarse, dense in train_loader:
+    #
+    #     plot_xyz(input[0], save_path='./plot_xyz_input.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    #     plot_xyz(target[0], save_path='./plot_xyz_target.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    #     plot_xyz(coarse[0], save_path='./plot_xyz_coarse.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    #     plot_xyz(dense[0], save_path='./plot_xyz_dense.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+    #     import pdb;pdb.set_trace()
+
+    for input in kitti_loader:
+
+        plot_xyz(input[0], save_path='./kitti.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
         import pdb;pdb.set_trace()
