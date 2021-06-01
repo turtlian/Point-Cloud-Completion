@@ -42,6 +42,63 @@ def augmentation(partial, target, scale, rotation, mirror_prob):
 
     return np.dot(partial, transform_matrix), np.dot(target, transform_matrix)
 
+def resample_pcd(pcd, n):
+    """Drop or duplicate points so that pcd has exactly n points"""
+    idx = np.random.permutation(pcd.shape[0])
+    if idx.shape[0] < n:
+        idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
+    return pcd[idx[:n]]
+
+
+def mix_up(partial_path_list,target_path_list,mixup):
+    partial_list = []
+    target_list = []
+    partial_temp = []
+    target_temp = []
+    if mixup == 'naive':
+        '''
+        2개의 input point cloud를 불러옵니다. s1,s2
+        s1에서 2048*gamma만큼의 points를 random하게 가져오고 
+        s2에서 2048*(1-gamma)만큼의 points를 random하게 가져옵니다
+        둘을 concat
+        '''
+        # allocate partial&target data
+        for i, path in enumerate(partial_path_list):
+            partial_temp.append(load_h5_file(path))
+            target_temp.append(load_h5_file(target_path_list[i]))
+
+        # shuffle idx
+        idx = [i for i in range(len(partial_temp))]
+        random.shuffle(idx)
+
+        # mixup : 1st+2nd, 2nd+3rd, 3rd+4th.....
+        for i in range(len(idx)-1):
+            gamma = np.random.beta(1,1) # 0~1
+            split = int(2048*gamma)
+
+            s1 = partial_temp[idx[i]]
+            s2 = partial_temp[idx[i+1]]
+            partial = np.concatenate((s1[0:split],s2[split:]),axis=0)
+
+            t1 = target_temp[idx[i]]
+            t2 = target_temp[idx[i]]
+            target = np.concatenate((t1[0:split],t2[split:]),axis=0)
+            partial_list.append(partial)
+            target_list.append(target)
+    elif mixup == 'emd':
+        '''
+        논문에 소개된 내용
+        2개의 input point cloud를 불러옵니다. s1,s2
+        s1의 모든 points의 성분(x,y,z)에 gamma를 곱하고
+        s2의 모든 points의 성분에 gamma에 해당하는 emd를 곱해서
+        s1+s2
+        '''
+        pass
+    elif mixup == 'manifold':
+        pass
+    else:
+        raise ValueError('wrong methodology')
+    return partial_list, target_list
 
 # visualization
 '''https://github.com/lynetcha/completion3d/blob/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7/shared/vis.py'''
@@ -182,4 +239,3 @@ def draw_curve(work_dir, train_logger, test_logger):
         plt.grid(True)
         plt.savefig(work_dir + '/loss_curve.png')
         plt.close()
-        
