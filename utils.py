@@ -6,6 +6,7 @@ import math
 from matplotlib import pyplot as plt
 from collections import Iterable
 import torch
+import pickle
 
 # data
 def load_h5_file(path):
@@ -56,12 +57,6 @@ def mix_up(partial_path_list,target_path_list,mixup):
     partial_temp = []
     target_temp = []
     if mixup == 'naive':
-        '''
-        2개의 input point cloud를 불러옵니다. s1,s2
-        s1에서 2048*gamma만큼의 points를 random하게 가져오고 
-        s2에서 2048*(1-gamma)만큼의 points를 random하게 가져옵니다
-        둘을 concat
-        '''
         # allocate partial&target data
         for i, path in enumerate(partial_path_list):
             partial_temp.append(load_h5_file(path))
@@ -86,18 +81,17 @@ def mix_up(partial_path_list,target_path_list,mixup):
             partial_list.append(partial)
             target_list.append(target)
     elif mixup == 'emd':
-        '''
-        논문에 소개된 내용
-        2개의 input point cloud를 불러옵니다. s1,s2
-        s1의 모든 points의 성분(x,y,z)에 gamma를 곱하고
-        s2의 모든 points의 성분에 gamma에 해당하는 emd를 곱해서
-        s1+s2
-        '''
-        pass
-    elif mixup == 'manifold':
-        pass
+        filePath = './emd_partial_list.txt'
+        with open(filePath, 'rb') as f:
+            partial_list = pickle.load(f)
+
+        filePath = './emd_target_list.txt'
+        with open(filePath,'rb') as f:
+            target_list = pickle.load(f) 
+
     else:
         raise ValueError('wrong methodology')
+
     return partial_list, target_list
 
 # visualization
