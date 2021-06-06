@@ -37,9 +37,3 @@ class PCN(nn.Module):
         v = self.encoder(x)
         y_coarse, y_detail = self.decoder(v)
         return v, y_coarse, y_detail
-
-
-if __name__ == '__main__':
-    # model = TopNet(1024, 8, 16384).cuda()
-    model = PCN(1024, 1024, 16384).cuda()
-    summary(model, (3,2048))
