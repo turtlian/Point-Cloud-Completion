@@ -1,5 +1,5 @@
 import os
-from utils import load_h5_file, augmentation, resample_pcd, plot_xyz, plot_pcds, pc_normalize
+from utils import load_h5_file, augmentation, resample_pcd, plot_xyz, plot_pcds, pc_normalize, mix_up
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pandas as pd
@@ -8,7 +8,7 @@ import numpy as np
 
 class ShapeNetDataset(Dataset):
     def __init__(self, data_path, point_class='all', mode='train', scaling=None, rotation=False, mirror_prob=None,
-                 num_coarse = 1024, num_dense = 16384):
+                 crop_prob=None, num_coarse = 1024, num_dense = 16384):
 
         self.mode = mode
         self.partial_list = []
@@ -16,6 +16,7 @@ class ShapeNetDataset(Dataset):
         self.rotation = rotation
         self.mirror_prob = mirror_prob
         self.scaling = scaling
+        self.crop_prob = crop_prob
         self.num_coarse = num_coarse
         self.num_dense = num_dense
 
@@ -49,11 +50,8 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         point = self.partial_list[idx]
         target = self.target_list[idx]
-        
         # augmentation
-        augmentation_matrix = augmentation(self.scaling, self.rotation, self.mirror_prob)
-        point = np.dot(point, augmentation_matrix)
-        target = np.dot(target, augmentation_matrix)
+        point, target = augmentation(point, target, self.scaling, self.rotation, self.mirror_prob, self.crop_prob)
         # normalizing
         point[:, 0:3] = pc_normalize(point[:, 0:3])
         target[:, 0:3] = pc_normalize(target[:, 0:3])
@@ -61,7 +59,7 @@ class ShapeNetDataset(Dataset):
         choice = np.random.choice(len(point), self.num_coarse, replace=True)
         coarse_gt = target[choice, :]
         dense_gt = resample_pcd(target, self.num_dense)
-        
+
         return torch.Tensor(point.T), torch.Tensor(target.T), torch.Tensor(coarse_gt.T), torch.Tensor(dense_gt.T)
 
 
@@ -85,4 +83,3 @@ class KittiDataset(Dataset):
         point[:, 0:3] = pc_normalize(point[:, 0:3])
 
         return torch.Tensor(point.T)
-    
