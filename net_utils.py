@@ -102,7 +102,7 @@ class decoder_mlp(nn.Module):
 
         self.linear1 = nn.Linear(encoder_feature_dim, 256)
         self.linear2 = nn.Linear(256, 64)
-        self.linear3 = nn.Linear(64, 8 * num_child_node)
+        self.linear3 = nn.Linear(64, 128 * num_child_node)
         self.bn1_m = nn.BatchNorm1d(256)
         self.bn2_m = nn.BatchNorm1d(64)
 
