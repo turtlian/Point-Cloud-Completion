@@ -6,10 +6,11 @@ import os
 import torch
 import argparse
 import torch.optim as optim
-from utils import Logger, AverageMeter, draw_curve
+from utils import Logger, AverageMeter, draw_curve, mix_up
 import json
 import torch.nn as nn
 from torch.optim import lr_scheduler
+import numpy as np
 
 parser = argparse.ArgumentParser(description='Point Cloud Completion Project')
 parser.add_argument('--save_path', default='./exp', type=str,
@@ -17,16 +18,16 @@ parser.add_argument('--save_path', default='./exp', type=str,
 parser.add_argument('--data_path', default='./shapenet', type=str,
                     help='datapath')
 parser.add_argument('--npts', default=16384, type=int,
-                    help='number of generated points')
+                    help='number of generated points(dense)')
 parser.add_argument('--coarse', default=1024, type=int,
-                    help='number of generated points')
+                    help='number of generated points(coarse)')
 parser.add_argument('--alpha', default=0.5, type=int,
                     help='coarse loss weight')
 parser.add_argument('--model', default='topnet', type=str,
                     help='topnet or pcn')
 parser.add_argument('--embedding_dim', default=1024, type=int,
                     help='embedding size')
-parser.add_argument('--batch_size', default=32, type=int,
+parser.add_argument('--batch_size', default=64, type=int,
                     help='batch size')
 parser.add_argument('--optim', default='adagrad', type=str,
                     help='optimizer')
@@ -42,6 +43,10 @@ parser.add_argument('--rotation', default=False, type=bool,
                     help='If "true", randomly rotate the point')
 parser.add_argument('--mirror_prob', default=None, type=float,
                     help='Probability of randomly mirroring points')
+parser.add_argument('--crop_prob', default=None, type=float,
+                    help='Probability of cropping')
+parser.add_argument('--mixup_prob', default=None, type=float,
+                    help='Probability of mixup')
 parser.add_argument('--gpu_id', default='1', type=str, help='devices')
 args = parser.parse_args()
 
@@ -51,6 +56,9 @@ def train(model, trn_loader, criterion, optimizer, epoch, num_epoch, train_logge
     train_loss = AverageMeter()
     for i, (data, target, coarsegt, densegt) in enumerate(trn_loader):
         data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
+        if args.mixup_prob is not None and np.random.rand(1) < args.mixup_prob:
+            data, coarsegt, densegt = mix_up(data, coarsegt, densegt, 'naive', 1)
+
         output = model(data)
         if args.model == 'topnet':
             loss, _ = criterion(output.transpose(1,2), densegt.transpose(1,2))
@@ -102,7 +110,7 @@ def main():
 
     # define architecture
     if args.model == 'topnet':
-        network = TopNet(encoder_feature_dim = args.embedding_dim, decoder_feature_dim = 8, npts = args.npts).cuda()
+        network = TopNet(encoder_feature_dim = args.embedding_dim, decoder_feature_dim = 128, npts = args.npts).cuda()
     else:
         network = PCN(encoder_feature_dim = args.embedding_dim, num_coarse = args.coarse ,num_dense = args.npts).cuda()
     network = nn.DataParallel(network).cuda()
@@ -110,7 +118,8 @@ def main():
     # load dataset
     train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', point_class = 'all',
                                             scaling = args.scaling, rotation = args.rotation,
-                                            mirror_prob = args.mirror_prob, num_coarse = args.coarse, num_dense = args.npts)
+                                            mirror_prob = args.mirror_prob, crop_prob = args.crop_prob,
+                                            num_coarse = args.coarse, num_dense = args.npts)
     val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val', point_class = 'all')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
@@ -125,7 +134,6 @@ def main():
         optimizer = optim.Adam(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     elif args.optim == 'adagrad':
         optimizer = optim.Adagrad(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], gamma=0.7)
 
     # logger
