@@ -30,15 +30,10 @@ class ShapeNetDataset(Dataset):
             self.partial_path_list = sorted([os.path.join(self.partial_path_list, k) for k in os.listdir(self.partial_path_list)]) # 해당 path에 있는 모든 데이터의 dir
             self.target_path_list = os.path.join(data_path, mode, 'gt', class_dict[point_class]) # gt data path
             self.target_path_list = sorted([os.path.join(self.target_path_list, k) for k in os.listdir(self.target_path_list)]) # 해당 path에 있는 모든 데이터의 dir
-
-            if mixup != None:
-                self.partial_list, self.target_list = mix_up(self.partial_path_list,
-                                                             self.target_path_list,
-                                                             mixup)
-            else:
-                for i, path in enumerate(self.partial_path_list): # 각각의 list에 partical과 target을 넣어줌. 각각은 (2048,3) 
-                    self.partial_list.append(load_h5_file(path))
-                    self.target_list.append(load_h5_file(self.target_path_list[i]))
+   
+            for i, path in enumerate(self.partial_path_list): # 각각의 list에 partical과 target을 넣어줌. 각각은 (2048,3) 
+                self.partial_list.append(load_h5_file(path))
+                self.target_list.append(load_h5_file(self.target_path_list[i]))
 
         else : # point_class == 'all'
             self.data_path = os.path.join(data_path, self.mode + '.list')
@@ -63,6 +58,7 @@ class ShapeNetDataset(Dataset):
     def __getitem__(self, idx):
         point = self.partial_list[idx]
         target = self.target_list[idx]
+        print('pp',point.shape)
 
         point[:, 0:3] = pc_normalize(point[:, 0:3])
         target[:, 0:3] = pc_normalize(target[:, 0:3])
