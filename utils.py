@@ -6,6 +6,7 @@ import math
 from matplotlib import pyplot as plt
 from collections import Iterable
 import torch
+import random
 
 # data
 def load_h5_file(path):
@@ -23,7 +24,7 @@ def pc_normalize(pc):
     pc = pc / m
     return pc
 
-def augmentation(scale, rotation, mirror_prob):
+def augmentation(point, target, scale, rotation, mirror_prob, crop_prob):
     '''https://github.com/matthew-brett/transforms3d'''
     transform_matrix = transforms3d.zooms.zfdir2mat(1)
 
@@ -39,15 +40,67 @@ def augmentation(scale, rotation, mirror_prob):
             transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [1,0,0]), transform_matrix)
         if random.random() < mirror_prob/2:
             transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
+    if crop_prob is not None and np.random.rand(1) < crop_prob:
+        point_c = pc_normalize(point[:, 0:3])
+        target_c = pc_normalize(target[:, 0:3])
+        voxel_idx = np.random.randint(1, 5)
+        if voxel_idx == 1:
+            point_c=point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] >= 0]
+            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] >= 0]
+        elif voxel_idx == 2:
+            point_c = point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] <= 0]
+            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] <= 0]
+        elif voxel_idx ==3:
+            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] >= 0]
+            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] >= 0]
+        elif voxel_idx ==4:
+            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] <= 0]
+            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] <= 0]
+        if point_c.shape[0] > 200 and point_c.shape[0] <= 1024:
+            try:
+                point = resample_pcd(point_c, 2048)
+                target = resample_pcd(target_c, 2048)
+            except ValueError:
+                print('')
 
-    return transform_matrix
+    return np.dot(point, transform_matrix), np.dot(target, transform_matrix)
+
 
 def resample_pcd(pcd, n):
     """Drop or duplicate points so that pcd has exactly n points"""
     idx = np.random.permutation(pcd.shape[0])
     if idx.shape[0] < n:
         idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
+
     return pcd[idx[:n]]
+
+def mix_up(partial, coarsegt, densegt, mixup, alpha):
+    if mixup == 'naive':
+        '''
+        2개의 input point cloud를 불러옵니다. s1,s2
+        s1에서 2048*gamma만큼의 points를 random하게 가져오고 
+        s2에서 2048*(1-gamma)만큼의 points를 random하게 가져옵니다
+        둘을 concat
+        '''
+        # shuffle idx
+        rand_idx = torch.randperm(partial.size(0))
+        partial_shuffle = partial[rand_idx]
+        coarsegt_shuffle = coarsegt[rand_idx]
+        densegt_shuffle = densegt[rand_idx]
+
+        # mixup : 1st+2nd, 2nd+3rd, 3rd+4th.....
+        gamma = np.random.beta(alpha,alpha) # 0~1
+        split = int(2048*gamma)
+        partial = torch.cat([partial[:, :, 0:split],partial_shuffle[:, :, split:]],dim=2)
+        coarsegt = torch.cat([coarsegt[:, :, 0:split], coarsegt_shuffle[:, :, split:]], dim=2)
+        densegt = torch.cat([densegt[:, :, 0:split], densegt_shuffle[:, :, split:]], dim=2)
+
+    elif mixup == 'emd':
+        print('EEEEEMMMMMMMDDDD!!!')
+
+    return partial, coarsegt, densegt
 
 
 # visualization
