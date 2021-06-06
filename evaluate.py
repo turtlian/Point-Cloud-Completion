@@ -7,19 +7,19 @@ from torch.utils.data import Dataset, DataLoader
 import argparse
 import json
 from utils import AverageMeter
-from loss import chamfer_distance
+from loss import chamfer_distance, fscore
 import torch.nn as nn
 
 parser = argparse.ArgumentParser(description='visualization')
 parser.add_argument('--model_path', default='./pcn_adam00001_scale0_rot1_mirror_prob05/pcn_140.pth', type=str,
                     help='model path')
-parser.add_argument('--p_class', default='cabinet', type=str,
+parser.add_argument('--p_class', default='car', type=str,
                     help='class')
 parser.add_argument('--data_path', default='./shapenet', type=str,
                     help='data path')
 parser.add_argument('--data', default='shapenet', type=str,
                     help='dataset name')
-parser.add_argument('--gpu_id', default=4, type=str,
+parser.add_argument('--gpu_id', default='7', type=str,
                     help='gpu')
 parser.add_argument('--mode', default='test', type=str,
                     help='test/visual')
@@ -28,6 +28,7 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # load setting
+
 path = args.model_path.split('/')[1]
 path = os.path.join(path, 'configuration.json')
 with open(path, 'r') as f:
@@ -51,7 +52,7 @@ test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=
 
 # load trained model & loss
 if model == 'topnet':
-    network = TopNet(embedding_dim, 8, npts)
+    network = TopNet(embedding_dim, 128, npts)
 elif model == 'pcn':
     network = PCN(embedding_dim, num_coarse, npts)
 network=network.cuda()
@@ -66,6 +67,7 @@ def visualization():
         os.makedirs(os.path.join(save_path, 'input_points', args.p_class))
         os.makedirs(os.path.join(save_path, 'target_points', args.p_class))
         os.makedirs(os.path.join(save_path, 'pred_points', args.p_class))
+
     if args.data == 'kitti':
         for i, data in enumerate(test_loader):
             data = data.cuda()
@@ -78,7 +80,7 @@ def visualization():
                      xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
             if i%10 == 0:
                 print(i)
-    elif args.data == 'shapnet':
+    elif args.data == 'shapenet':
         for i, (data, _, _, densegt) in enumerate(test_loader):
             data, target = data.cuda(), densegt
             output = network(data)
@@ -96,6 +98,7 @@ def visualization():
 # performance evaluation
 def test():
     val_loss = AverageMeter()
+    val_fscore = AverageMeter()
     with torch.no_grad():
         if args.data == 'kitti':
             for i, (data, target) in enumerate(test_loader):
@@ -103,21 +106,24 @@ def test():
                 output = network(data)
                 if model == 'pcn':
                     output = output[2]
-                loss, _ = criterion(output.transpose(1, 2), target.transpose(1, 2))
+                loss, dist = criterion(output.transpose(1, 2), target.transpose(1, 2))
+                fscore1, _, _ = fscore(dist[0], dist[1])
                 val_loss.update(loss.item()*10000)
-
+                val_fscore.update(fscore1.item())
         elif args.data == 'shapenet':
             for i, (data, target, _, densegt) in enumerate(test_loader):
                 data, target, densegt = data.cuda(), target.cuda(), densegt.cuda()
                 output = network(data)
                 if model == 'pcn':
                     output = output[2]
-                loss, _ = criterion(output.transpose(1,2), densegt.transpose(1, 2))
+                loss, dist = criterion(output.transpose(1,2), densegt.transpose(1, 2))
+                fscore1, _, _ = fscore(dist[0], dist[1])
                 val_loss.update(loss.item() * 10000)
+                val_fscore.update(fscore1.item())
 
             print("=================== TEST(Validation) Start ====================")
-            print('Class : {p_class}  Test Loss : {loss:.4f}'.format(
-                    p_class = args.p_class, loss=val_loss.avg))
+            print('Class : {p_class}  Test Loss : {loss:.4f} Test Fscore : {fscore:.4f}'.format(
+                    p_class = args.p_class, loss=val_loss.avg, fscore=val_fscore.avg))
             print("=================== TEST(Validation) End ======================")
 
 
