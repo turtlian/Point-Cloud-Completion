@@ -1,5 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
-
 from typing import Union
 import torch.nn.functional as F
 from pytorch3d.ops.knn import knn_gather, knn_points
@@ -12,7 +10,6 @@ def _validate_chamfer_reduction_inputs(
     batch_reduction: Union[str, None], point_reduction: str
 ):
     """Check the requested reductions are valid.
-
     Args:
         batch_reduction: Reduction operation to apply for the loss across the
             batch, can be one of ["mean", "sum"] or None.
@@ -79,7 +76,6 @@ class chamfer_distance(nn.Module):
     ):
         """
         Chamfer distance between two pointclouds x and y.
-
         Args:
             x: FloatTensor of shape (N, P1, D) or a Pointclouds object representing
                 a batch of point clouds with at most P1 points in each batch element,
@@ -99,10 +95,8 @@ class chamfer_distance(nn.Module):
                 batch, can be one of ["mean", "sum"] or None.
             point_reduction: Reduction operation to apply for the loss across the
                 points, can be one of ["mean", "sum"].
-
         Returns:
             2-element tuple containing
-
             - **loss**: Tensor giving the reduced distance between the pointclouds
               in x and the pointclouds in y.
             - **loss_normals**: Tensor giving the reduced cosine distance of normals
@@ -186,6 +180,8 @@ class chamfer_distance(nn.Module):
                 cham_norm_y *= weights.view(N, 1)
 
         # Apply point reduction
+        dist1 = cham_x
+        dist2 = cham_y
         cham_x = cham_x.sum(1)  # (N,)
         cham_y = cham_y.sum(1)  # (N,)
         if return_normals:
@@ -216,4 +212,11 @@ class chamfer_distance(nn.Module):
         cham_dist = cham_x + cham_y
         cham_normals = cham_norm_x + cham_norm_y if return_normals else None
 
-        return cham_dist, cham_normals
+        return cham_dist, (dist1, dist2)
+
+def fscore(dist1, dist2, threshold=0.01):
+    precision_1 = torch.mean((dist1 < threshold).float())
+    precision_2 = torch.mean((dist2 < threshold).float())
+    fscore = 2 * precision_1 * precision_2 / (precision_1 + precision_2)
+    fscore[torch.isnan(fscore)] = 0
+    return fscore, precision_1, precision_2
