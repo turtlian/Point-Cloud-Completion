@@ -4,6 +4,7 @@ import time
 import argparse
 import os
 from utils import *
+import pickle
 
 parser = argparse.ArgumentParser(description='emd_augmentation')
 parser.add_argument('--theta', default=1, type=int,
@@ -54,26 +55,28 @@ def main():
     start = time.time()
 
     # step1. load data
+    print('=== Load Data ===')
     data_path = os.path.join('/daintlab/data/shapenet/train.list')
     partial_list = []
     target_list = []
     emd_partial_list = []
     emd_target_list = []
-    c =0 ###
+    
     with open(data_path, 'r') as f:
         for line in f:
             partial = os.path.join('/daintlab/data/shapenet/train/partial', line.rstrip() + '.h5')
             target = os.path.join('/daintlab/data/shapenet/train/gt', line.rstrip() + '.h5')
             partial_list.append(pc_normalize(load_h5_file(partial)[:,0:3])) # (2048,3) * 28974
             target_list.append(pc_normalize(load_h5_file(target)[:,0:3])) # (2048,3) * 28974
-            if c==10: ###
-                break ###
-            c+=1 ###
+           
     
-    # step2. Euclidean sort
+    # step2. Euclidean sort (it dosen't take long time)
+    print('=== Euclidean Sort ===')
     for i in range(len(partial_list)):
         partial_list[i] = euclidean_sort(partial_list[i])
         target_list[i] = euclidean_sort(target_list[i])
+        if (i+1)%100==0:
+            print("data / total : {} / {}".format(i+1,len(partial_list)-1))
 
     # step3. emd_aug (it may takes long time..)
     print("=== EMD Augmentation ===")
@@ -83,22 +86,37 @@ def main():
         emd_partial_list.append(emd_pc_partial)
         emd_target_list.append(emd_pc_target)
         if (i+1)%100==0:
-            print("data / total : {} / {}".format(i+1,len(partial_list-1)))
+            print("data / total : {} / {}".format(i+1,len(partial_list)-1))
 
     # step4. save
+    print("=== Now On Saving... ===")
+
+    filePath = './emd_partial_list.txt'
+    with open(filePath, 'wb') as f:
+        pickle.dump(emd_partial_list, f)
+
+    filePath = './emd_target_list.txt'
+    with open(filePath, 'wb') as f:
+        pickle.dump(emd_target_list, f)
+    
 
     # step5. save visualized plots
+    k = 9100
     for i in range(10):
-        point = emd_partial_list[i]
-        target = emd_target_list[i]
-        #point[:, 0:3] = pc_normalize(point[:, 0:3])
-        #target[:,0:3] = pc_normalize(target[:,0:3])
+        # i+9100 to save airplane
+        point_emd = emd_partial_list[i+k]
+        point = partial_list[i+k]
+        target = emd_target_list[i+k]
     
-        point, target = augmentation(point, target, None, False, None)
+        point_emd = torch.Tensor(point_emd.T)
         point = torch.Tensor(point.T)
-        plot_xyz(point, save_path='./plot_xyz_emd_trn'+str(i)+'.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+        target = torch.Tensor(target.T)
+        plot_xyz(point, save_path='./emd_mixup_outcome/plot_xyz_origin_trn_input_'+str(i)+'.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+        plot_xyz(point_emd, save_path='./emd_mixup_outcome/plot_xyz_emd_trn_input_'+str(i)+'.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
+        plot_xyz(target, save_path='./emd_mixup_outcome/plot_xyz_emd_trn_target_'+str(i)+'.png', xlim=(-1, 1), ylim=(-1, 1), zlim=(-1, 1))
 
-    ### ===== ###
+
+    # final. summary
     end = time.time()
     print('EMD augmentation compeleted. Time duration : {0} | Length of new data : {1}'.
           format(end-start,len(emd_partial_list)))
@@ -106,3 +124,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    """To load data, follow bellow code. type : list[np.array,np.array,....,np.array]"""
+    # filePath = './emd_partial_list.txt'
+    # with open(filePath, 'rb') as f:
+    #     emd_partial_list = pickle.load(f)
+    # print(emd_partial_list[0])
