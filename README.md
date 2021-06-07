@@ -18,13 +18,14 @@ The pretrained models on ShapeNet are available as follows:
 * Python 3.6.13
 * CUDA 11.1
 * Pytorch 1.6.0+cu101
-* Open3D
-<pre><code>python -m pip install open3d==10.0</code></pre>
-* transform3d
-<pre><code>pip install transfrom3d</code></pre>
-* h5py
-<pre><code>pip install h5py</code></pre>
+* Open3D <pre><code>python -m pip install open3d==10.0</code></pre>
+* transform3d <pre><code>pip install transfrom3d</code></pre>
+* h5py <pre><code>pip install h5py</code></pre>
 
 
 ### Usage
+##### Download dataset
+We use two datasets in our project.
+  1. ShapeNet
+    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset.
 
