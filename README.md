@@ -19,13 +19,16 @@ The pretrained models on ShapeNet are available as follows:
 * CUDA 11.1
 * Pytorch 1.6.0+cu101
 * Open3D ```python -m pip install open3d==10.0```
-* transform3d <pre><code>pip install transfrom3d</code></pre>
-* h5py <pre><code>pip install h5py</code></pre>
+* transform3d ```pip install transfrom3d```
+* h5py ```pip install h5py```
 
 
 ### Usage
-##### Download dataset
+#### Download dataset
 We use two datasets in our project.
   1. ShapeNet
-    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset.
+    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
+  2. KITTI
+    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
 
+#### Training
