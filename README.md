@@ -27,12 +27,17 @@ The pretrained models on ShapeNet are available as follows:
 ## Usage
 ### Download dataset
 We use two datasets in our project.
-  1. ShapeNet
-    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
-  2. KITTI
-    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/kitti```).
 
-### Trin the model
+  1. ShapeNet
+    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```
+    ./{project_path}/shapenet
+    ```).
+  2. KITTI
+    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```
+    ./{project_path}/kitti
+    ```).
+
+### Train the model
 All log files in the training process, such as log message, checipoints, loss curve image, configuration.json, etc, will be saved to the work directory.
 * Train PCN (2 GPUs)
 ``` 
