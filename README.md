@@ -6,4 +6,10 @@ We sue the ShapeNet and KITTI datasets in our experiments, which are available b
 * [ShapeNet](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing)
 * [KITTI](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing)
 
-[code reference](https://github.com/lynetcha/completion3d/tree/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7)
+### Pretrained Models
+The pretrained models on ShapeNet are available as follows:
+* [PCN for ShapeNet](https://drive.google.com/drive/folders/1-RjCiX1OJ0yc8p4LC26xm7EO0TIVLeO-?usp=sharing)
+* [TopNet for ShapeNet](https://drive.google.com/drive/folders/1CM-NSYOAmLnTt9sjkVg057GKvxSozkeL?usp=sharing)
+
+### Prerequisties
+
