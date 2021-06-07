@@ -22,7 +22,7 @@ The pretrained models on ShapeNet are available as follows:
 * transform3d ```pip install transfrom3d```
 * h5py ```pip install h5py```
 
-/hr
+<hr/>
 
 ## Usage
 ### Download dataset
@@ -84,3 +84,12 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
                                         /1.png
                                            :
 ```
+<hr/>
+### Quantitative Results
+
+|Chamfer * 10000|Airplane|Cabinet|Car|Chair|Lamp|Couch|Table|Watercraft|
+|---------------|--------|-------|---|-----|----|-----|-----|----------|
+|PCN|7.97|31.53|9.23|28.50|43.38|18.44|32.11|18.37|
+|PCN+Norm|20.01|92.96|39.08|64.33|143.34|47.91|82.29|4.19|
+|TopNet|5.48|21.07|7.46|21.24|32.31|14.92|22.95|13.62|
+|TopNet+Norm|15.33|76.43|30.96|61.58|137.37|44.16|76.21|34.81|
