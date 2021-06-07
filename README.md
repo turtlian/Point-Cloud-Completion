@@ -18,7 +18,7 @@ The pretrained models on ShapeNet are available as follows:
 * Python 3.6.13
 * CUDA 11.1
 * Pytorch 1.6.0+cu101
-* Open3D '''python -m pip install open3d==10.0'''
+* Open3D ```python -m pip install open3d==10.0```
 * transform3d <pre><code>pip install transfrom3d</code></pre>
 * h5py <pre><code>pip install h5py</code></pre>
 
