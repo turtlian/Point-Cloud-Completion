@@ -1,5 +1,5 @@
 # 3D Point cloud completion
-This is implementation of PCN and TopNet in pytorch. PCN and TopNet is an autoencoder for point cloud completion. As for the details of the paper, please refer to [PCN](https://arxiv.org/abs/1808.00671) and [TopNet](https://ieeexplore.ieee.org/document/8953650).
+This is the implementation of PCN and TopNet in PyTorch. PCN and TopNet is an autoencoder for point cloud completion. As for the details of the paper, please refer to [PCN](https://arxiv.org/abs/1808.00671) and [TopNet](https://ieeexplore.ieee.org/document/8953650).
 
 ### Environment
 
