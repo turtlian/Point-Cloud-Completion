@@ -40,13 +40,14 @@ All log files in the training process, such as log message, checipoints, loss cu
                    --corase 1024 --alpha 0.5 --embedding_dim 1024 
                    --batch_size 32 --optim adagra --lr 0.1e-2 --epochs 200 
                    --scaling None --rotation False --mirror_prob None 
-                   --crop_prob None --mixup_prob None --emd False ```
+                   --crop_prob None --mixup_prob None --emd False 
+```
                    
- * Train TopNet (Single GPU)
+* Train TopNet (Single GPU)
 ``` python main.py --gpu_id 0 --save_path /path/to/logfiles/ 
                    --data_path /datapath --model topnet --npts 16384 
                    --embedding_dim 1024 --batch_size 32 --optim adagra 
                    --lr 0.1e-2 --epochs 200 --scaling None 
                    --rotation False --mirror_prob None --crop_prob None 
-                   --mixup_prob None --emd False ```
- 
+                   --mixup_prob None --emd False
+ ```
