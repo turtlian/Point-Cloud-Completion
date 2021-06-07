@@ -22,6 +22,7 @@ The pretrained models on ShapeNet are available as follows:
 * transform3d ```pip install transfrom3d```
 * h5py ```pip install h5py```
 
+\hr
 
 ### Usage
 #### Download dataset
@@ -29,6 +30,23 @@ We use two datasets in our project.
   1. ShapeNet
     Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
   2. KITTI
-    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
+    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/kitti```).
 
 #### Training
+All log files in the training process, such as log message, checipoints, loss curve image, configuration.json, etc, will be saved to the work directory.
+* Train PCN (2 GPUs)
+``` python main.py --gpu_id 0,1 --save_path /path/to/logfiles/ 
+                   --data_path /datapath --model pcn --npts 16384 
+                   --corase 1024 --alpha 0.5 --embedding_dim 1024 
+                   --batch_size 32 --optim adagra --lr 0.1e-2 --epochs 200 
+                   --scaling None --rotation False --mirror_prob None 
+                   --crop_prob None --mixup_prob None --emd False ```
+                   
+ * Train TopNet (Single GPU)
+``` python main.py --gpu_id 0 --save_path /path/to/logfiles/ 
+                   --data_path /datapath --model topnet --npts 16384 
+                   --embedding_dim 1024 --batch_size 32 --optim adagra 
+                   --lr 0.1e-2 --epochs 200 --scaling None 
+                   --rotation False --mirror_prob None --crop_prob None 
+                   --mixup_prob None --emd False ```
+ 
