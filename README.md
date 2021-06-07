@@ -33,7 +33,8 @@ We use two datasets in our project.
    Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```
     ./{project_path}/shapenet
     ```).
-  2. KITTI
+ 
+ 2. KITTI
    
    Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```
     ./{project_path}/kitti
