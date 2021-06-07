@@ -50,11 +50,11 @@ python main.py --gpu_id 0 --save_path /path/to/logfiles/ --data_path /datapath -
  ```
 * Output
 ``` 
-<Your_save_path> / configuration.json
-                 / <model name>_<epoch>.pth
-                 / train_loss.log
-                 / val_loss.log
-                 / loss_curve.png
+<Your_save_path> /configuration.json
+                 /<model name>_<epoch>.pth
+                 /train_loss.log
+                 /val_loss.log
+                 /loss_curve.png
 ```
 ### Evaluate the model
 * Calculate the test performance(CD, F-score) for each class of ShapeNet
@@ -73,4 +73,14 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 ```
 
 * Output of visualization
-
+``` 
+<Your_model_path> /input_points/p_class/0.png
+                                       /1.png
+                                          :
+                  /pred_points/p_class/0.png
+                                      /1.png
+                                         :
+                  /target_points/p_class/0.png
+                                        /1.png
+                                           :
+```
