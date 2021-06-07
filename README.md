@@ -96,5 +96,4 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 |TopNet+Norm|15.33|76.43|30.96|61.58|137.37|44.16|76.21|34.81|
 
 ### Quantitative Results
-![image](https://user-images.githubusercontent.com/62421163/121050156-4eebf900-c7f3-11eb-9af4-82366af025ea.png)
-
+![image](https://user-images.githubusercontent.com/62421163/121050357-7773f300-c7f3-11eb-828b-82ff37700e4e.png)
