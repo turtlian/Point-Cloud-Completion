@@ -94,7 +94,7 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 ```
 <hr/>
 
-### Quantitative Results
+### Qualitative Results
 
 |Chamfer * 10000|Airplane|Cabinet|Car|Chair|Lamp|Couch|Table|Watercraft|
 |---------------|--------|-------|---|-----|----|-----|-----|----------|
