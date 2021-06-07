@@ -85,6 +85,7 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
                                            :
 ```
 <hr/>
+
 ### Quantitative Results
 
 |Chamfer * 10000|Airplane|Cabinet|Car|Chair|Lamp|Couch|Table|Watercraft|
@@ -93,3 +94,7 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 |PCN+Norm|20.01|92.96|39.08|64.33|143.34|47.91|82.29|4.19|
 |TopNet|5.48|21.07|7.46|21.24|32.31|14.92|22.95|13.62|
 |TopNet+Norm|15.33|76.43|30.96|61.58|137.37|44.16|76.21|34.81|
+
+### Quantitative Results
+
+
