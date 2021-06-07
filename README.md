@@ -2,19 +2,19 @@
 This is the PyTorch implementation of PCN and TopNet. PCN and TopNet is an autoencoder for point cloud completion. As for the details of the paper, please refer to [PCN](https://arxiv.org/abs/1808.00671) and [TopNet](https://ieeexplore.ieee.org/document/8953650).
 
 
-### Datasets
+## Datasets
 We use the ShapeNet and KITTI datasets in our experiments, which are available below:
 * [ShapeNet](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing)
 * [KITTI](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing)
 
 
-### Pretrained Models
+## Pretrained Models
 The pretrained models on ShapeNet are available as follows:
 * [PCN for ShapeNet](https://drive.google.com/drive/folders/1-RjCiX1OJ0yc8p4LC26xm7EO0TIVLeO-?usp=sharing)
 * [TopNet for ShapeNet](https://drive.google.com/drive/folders/1CM-NSYOAmLnTt9sjkVg057GKvxSozkeL?usp=sharing)
 
 
-### Prerequisites
+## Prerequisites
 * Python 3.6.13
 * CUDA 11.1
 * Pytorch 1.6.0+cu101
@@ -22,17 +22,17 @@ The pretrained models on ShapeNet are available as follows:
 * transform3d ```pip install transfrom3d```
 * h5py ```pip install h5py```
 
-\hr
+/hr
 
-### Usage
-#### Download dataset
+## Usage
+### Download dataset
 We use two datasets in our project.
   1. ShapeNet
     Download it from the [link](https://drive.google.com/file/d/1knz2xWiiwqR_pKa8gV8rnpf4nZkX_cnG/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/shapenet```).
   2. KITTI
     Download it from the [link](https://drive.google.com/file/d/130PXvRInzfNMGh7ss2ZXF3kfwh7oqHOQ/view?usp=sharing) and move it into the folder for storing the dataset. (e.g., ```./{project_path}/kitti```).
 
-#### Training
+### Trin the model
 All log files in the training process, such as log message, checipoints, loss curve image, configuration.json, etc, will be saved to the work directory.
 * Train PCN (2 GPUs)
 ``` 
@@ -56,3 +56,21 @@ python main.py --gpu_id 0 --save_path /path/to/logfiles/ --data_path /datapath -
                  / val_loss.log
                  / loss_curve.png
 ```
+### Evaluate the model
+* Calculate the test performance(CD, F-score) for each class of ShapeNet
+``` 
+python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /datapath --mode test --p_class car
+```
+
+* Visualize the pre-trained model's output for each class of ShapeNet
+``` 
+python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /datapath --mode visual --p_class car
+```
+
+* Visualize the pre-trained model's output for KITTI
+``` 
+python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /datapath --mode visual --data kitti
+```
+
+* Output of visualization
+
