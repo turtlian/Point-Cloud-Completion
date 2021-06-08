@@ -1,267 +1,244 @@
-import torch.nn as nn
-import torch.nn.functional as F
-import torch
+import h5py
 import numpy as np
+import transforms3d
+import random
 import math
+from matplotlib import pyplot as plt
+from collections import Iterable
+import torch
+import random
 
-# PCN encoder
-class PCNencoder(nn.Module):
-    def __init__(self, feature_dim):
-        super(PCNencoder, self).__init__()
-        self.feature_dim = feature_dim
-        self.conv1 = nn.Conv1d(3, 128, 1)
-        self.conv2 = nn.Conv1d(128, 256, 1)
-        self.bn1 = nn.BatchNorm1d(128)
-        self.bn2 = nn.BatchNorm1d(256)
+# data
+def load_h5_file(path):
+    '''Load point cloud data from h5 file'''
+    f = h5py.File(path, 'r')
+    point_data = np.array(f['data'], dtype = np.float64)
+    f.close()
 
-        self.conv3 = nn.Conv1d(512, 512, 1)
-        self.conv4 = nn.Conv1d(512, self.feature_dim, 1)
-        self.bn3 = nn.BatchNorm1d(512)
-        self.bn4 = nn.BatchNorm1d(feature_dim)
+    return point_data
 
-    def forward(self, x):
-        num_points = x.size(2)
+def pc_normalize(pc):
+    centroid = np.mean(pc, axis=0)
+    pc = pc - centroid
+    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
+    pc = pc / m
+    return pc
 
-        # first shared mlp
-        x = F.relu(self.bn1(self.conv1(x)))
-        feature = self.bn2(self.conv2(x))
+def augmentation(point, target, scale, rotation, mirror_prob, crop_prob):
+    '''https://github.com/matthew-brett/transforms3d'''
+    transform_matrix = transforms3d.zooms.zfdir2mat(1)
 
-        # point-wise maxpool
-        g = torch.max(feature, 2, keepdim=True)[0]
+    if scale is not None:
+        scaling_num = random.uniform(1 / scale, scale)
+        transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(scaling_num), transform_matrix)
+    if rotation:
+        angle = random.uniform(0, 2*math.pi)
+        transform_matrix = np.dot(transforms3d.axangles.axangle2mat([0,1,0], angle), transform_matrix) #fix y-axis
+    if mirror_prob is not None:
+        # flip x&z, not z
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [1,0,0]), transform_matrix)
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
+        if random.random() < mirror_prob/2:
+            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
+    if crop_prob is not None and np.random.rand(1) < crop_prob:
+        point_c = pc_normalize(point[:, 0:3])
+        target_c = pc_normalize(target[:, 0:3])
+        voxel_idx = np.random.randint(1, 5)
+        if voxel_idx == 1:
+            point_c=point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] >= 0]
+            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] >= 0]
+        elif voxel_idx == 2:
+            point_c = point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] <= 0]
+            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] <= 0]
+        elif voxel_idx ==3:
+            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] >= 0]
+            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] >= 0]
+        elif voxel_idx ==4:
+            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] <= 0]
+            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] <= 0]
+        if point_c.shape[0] > 200 and point_c.shape[0] <= 1024:
+            try:
+                point = resample_pcd(point_c, 2048)
+                target = resample_pcd(target_c, 2048)
+            except ValueError:
+                print('')
 
-        # expand and concat
-        g = g.repeat((1, 1, num_points))
-        x = torch.cat([g, feature], dim=1)
-
-        # second shared mlp
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = self.bn4(self.conv4(x))
-
-        # point-wise maxpool
-        x = torch.max(x, 2)[0]
-
-        return x
-
-# PCN decoder
-class PCNdecoder(nn.Module):
-    def __init__(self, num_coarse=1024, num_dense=16384):
-        super(PCNdecoder, self).__init__()
-
-        self.num_coarse = num_coarse
-        self.num_dense = num_dense
-
-        # fully connected layers
-        self.linear1 = nn.Linear(1024, 1024)
-        self.linear2 = nn.Linear(1024, 1024)
-        self.linear3 = nn.Linear(1024, 3 * num_coarse)
-        self.bn1 = nn.BatchNorm1d(1024)
-        self.bn2 = nn.BatchNorm1d(1024)
-
-        # shared mlp
-        self.conv1 = nn.Conv1d(3 + 2 + 1024, 512, 1)
-        self.conv2 = nn.Conv1d(512, 512, 1)
-        self.conv3 = nn.Conv1d(512, 3, 1)
-        self.bn3 = nn.BatchNorm1d(512)
-        self.bn4 = nn.BatchNorm1d(512)
-
-        # 2D grid
-        grids = np.meshgrid(np.linspace(-0.05, 0.05, 4, dtype=np.float32),
-                            np.linspace(-0.05, 0.05, 4, dtype=np.float32))  # (2, 4, 44)
-        self.grids = torch.Tensor(grids).view(2, -1)  # (2, 4, 4) -> (2, 16)
-
-    def forward(self, x):
-        b = x.size()[0]
-        # global features
-        v = x  # (B, 1024)
-
-        # fully connected layers to generate the coarse output
-        x = F.relu(self.bn1(self.linear1(x)))
-        x = F.relu(self.bn2(self.linear2(x)))
-        x = self.linear3(x)
-        y_coarse = x.view(-1, 3, self.num_coarse)  # (B, 3, 1024)
-
-        repeated_centers = y_coarse.unsqueeze(3).repeat(1, 1, 1, int(self.num_dense/self.num_coarse)).view(b, 3, -1)  # (B, 3, 16x1024)
-        repeated_v = v.unsqueeze(2).repeat(1, 1, self.num_dense)  # (B, 1024, 16x1024)
-        grids = self.grids.to(x.device)  # (2, 16)
-        grids = grids.unsqueeze(0).repeat(b, 1, self.num_coarse)  # (B, 2, 16x1024)
-
-        x = torch.cat([repeated_v, grids, repeated_centers], dim=1)  # (B, 2+3+1024, 16x1024)
-        x = F.relu(self.bn3(self.conv1(x)))
-        x = F.relu(self.bn4(self.conv2(x)))
-        x = self.conv3(x)  # (B, 3, 16x1024)
-        y_detail = x + repeated_centers  # (B, 3, 16x1024)
-
-        return y_coarse, y_detail
-
-# mlp for root node of decoder
-class decoder_mlp(nn.Module):
-    def __init__(self, encoder_feature_dim, decoder_feature_dim, num_child_node):
-        super(decoder_mlp, self).__init__()
-        self.decoder_feature_dim = decoder_feature_dim
-        self.num_child_node = num_child_node
-
-        self.linear1 = nn.Linear(encoder_feature_dim, 256)
-        self.linear2 = nn.Linear(256, 64)
-        self.linear3 = nn.Linear(64, 128 * num_child_node)
-        self.bn1_m = nn.BatchNorm1d(256)
-        self.bn2_m = nn.BatchNorm1d(64)
+    return np.dot(point, transform_matrix), np.dot(target, transform_matrix)
 
 
-    def forward(self, feature):
+def resample_pcd(pcd, n):
+    """Drop or duplicate points so that pcd has exactly n points"""
+    idx = np.random.permutation(pcd.shape[0])
+    if idx.shape[0] < n:
+        idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
 
-        x = F.relu(self.bn1_m(self.linear1(feature)))
-        x = F.relu(self.bn2_m(self.linear2(x)))
-        x = self.linear3(x)
-        x = F.tanh(x)
+    return pcd[idx[:n]]
 
-        # concat featur vector + x
-        x = x.view(-1, self.decoder_feature_dim, self.num_child_node)
-        feature_expand = feature.unsqueeze(2).repeat(1, 1, x.size(2))
-        x = torch.cat([x, feature_expand], dim=1)
+def mix_up(partial, coarsegt, densegt, mixup, alpha):
+    if mixup == 'naive':
+        '''
+        2개의 input point cloud를 불러옵니다. s1,s2
+        s1에서 2048*gamma만큼의 points를 random하게 가져오고 
+        s2에서 2048*(1-gamma)만큼의 points를 random하게 가져옵니다
+        둘을 concat
+        '''
+        # shuffle idx
+        rand_idx = torch.randperm(partial.size(0))
+        partial_shuffle = partial[rand_idx]
+        coarsegt_shuffle = coarsegt[rand_idx]
+        densegt_shuffle = densegt[rand_idx]
 
-        return x
+        # mixup : 1st+2nd, 2nd+3rd, 3rd+4th.....
+        gamma = np.random.beta(alpha,alpha) # 0~1
+        split = int(2048*gamma)
+        partial = torch.cat([partial[:, :, 0:split],partial_shuffle[:, :, split:]],dim=2)
+        coarsegt = torch.cat([coarsegt[:, :, 0:split], coarsegt_shuffle[:, :, split:]], dim=2)
+        densegt = torch.cat([densegt[:, :, 0:split], densegt_shuffle[:, :, split:]], dim=2)
 
-# mlp for leaf node of decoder
-class decoder_mlp_conv(nn.Module):
-    def __init__(self,encoder_feature_dim, decoder_feature_dim, tree_arch, npts):
-        super(decoder_mlp_conv, self).__init__()
-        self.decoder_feature_dim = decoder_feature_dim
-        self.tree_arch = tree_arch
-        self.npts = npts
+    elif mixup == 'emd':
+        print('EEEEEMMMMMMMDDDD!!!')
 
-        input_channel = encoder_feature_dim + decoder_feature_dim
-        output_channel = decoder_feature_dim
+    return partial, coarsegt, densegt
 
-        self.conv11_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv12_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv13_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv14_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[1], 1)
-        self.bn11_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn12_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn13_d = nn.BatchNorm1d(int(input_channel / 8))
 
-        self.conv21_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv22_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv23_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv24_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[2], 1)
-        self.bn21_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn22_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn23_d = nn.BatchNorm1d(int(input_channel / 8))
+# visualization
+'''https://github.com/lynetcha/completion3d/blob/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7/shared/vis.py'''
 
-        self.conv31_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv32_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv33_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv34_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[3], 1)
-        self.bn31_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn32_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn33_d = nn.BatchNorm1d(int(input_channel / 8))
+def plot_xyz(xyz, zdir='y', cmap='Reds', xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    elev = 30
+    azim = -45
+    ax.view_init(elev, azim)
+    xyz = xyz.T
+    ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:,2], c=xyz[:,0], s=20, zdir=zdir, cmap=cmap, vmin=-1, vmax=0.5)
+    ax.set_axis_off()
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_zlim(zlim)
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
+    if save_path is not None:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
 
-        self.conv41_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv42_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv43_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv44_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[4], 1)
-        self.bn41_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn42_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn43_d = nn.BatchNorm1d(int(input_channel / 8))
+def plot_pcds(pcds, titles, use_color=[],color=None, suptitle='', sizes=None, cmap='Reds', zdir='y',
+                         xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
+    if sizes is None:
+        sizes = [5 for i in range(len(pcds))]
+    fig = plt.figure(figsize=(len(pcds) * 3, 3))
+    for i in range(1):
+        elev = 30
+        azim = -45 + 90 * i
+        for j, (pcd, size) in enumerate(zip(pcds, sizes)):
+            if color is None or not use_color[j]:
+                pcd = pcd.T
+                clr = pcd[:, 0]
 
-        self.conv51_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv52_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv53_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv54_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[5], 1)
-        self.bn51_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn52_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn53_d = nn.BatchNorm1d(int(input_channel / 8))
+            ax = fig.add_subplot(1, len(pcds), i * len(pcds) + j + 1, projection='3d')
+            ax.view_init(elev, azim)
+            ax.scatter(pcd[:, 0], pcd[:, 1], pcd[:, 2], zdir=zdir, c=clr, s=size, cmap=cmap, vmin=-1, vmax=0.5)
+            ax.set_title(titles[j])
+            ax.set_axis_off()
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+            ax.set_zlim(zlim)
+    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
+    plt.suptitle(suptitle)
+    if save_path is not None:
+        fig.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
 
-        self.conv61_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv62_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv63_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv64_d = nn.Conv1d(int(input_channel / 8), output_channel * tree_arch[6], 1)
-        self.bn61_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn62_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn63_d = nn.BatchNorm1d(int(input_channel / 8))
 
-        self.conv71_d = nn.Conv1d(input_channel, int(input_channel / 2), 1)
-        self.conv72_d = nn.Conv1d(int(input_channel / 2), int(input_channel / 4), 1)
-        self.conv73_d = nn.Conv1d(int(input_channel / 4), int(input_channel / 8), 1)
-        self.conv74_d = nn.Conv1d(int(input_channel / 8), 3 * tree_arch[7], 1)
-        self.bn71_d = nn.BatchNorm1d(int(input_channel / 2))
-        self.bn72_d = nn.BatchNorm1d(int(input_channel / 4))
-        self.bn73_d = nn.BatchNorm1d(int(input_channel / 8))
+# logging
+class AverageMeter(object):
 
-    def forward(self, x, feature):
-            total_node = {}
-            for i, node in enumerate(self.tree_arch):
-                total_node[i] = np.prod([int(k) for k in self.tree_arch[:i+2]])
+    def __init__(self):
+        self.reset()
 
-            x = F.relu(self.bn11_d(self.conv11_d(x)))
-            x = F.relu(self.bn12_d(self.conv12_d(x)))
-            x = F.relu(self.bn13_d(self.conv13_d(x)))
-            x = self.conv14_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[0])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[0])
-            x = torch.cat([x, feature_expand], dim=1)
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.sum_2 = 0  # sum of squares
+        self.count = 0
+        self.std = 0
 
-            x = F.relu(self.bn21_d(self.conv21_d(x)))
-            x = F.relu(self.bn22_d(self.conv22_d(x)))
-            x = F.relu(self.bn23_d(self.conv23_d(x)))
-            x = self.conv24_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[1])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[1])
-            x = torch.cat([x, feature_expand], dim=1)
+    def update(self, val, n=1):
+        if val != None:  # update if val is not None
+            self.val = val
+            self.sum += val * n
+            self.sum_2 += val ** 2 * n
+            self.count += n
+            self.avg = self.sum / self.count
+            self.std = np.sqrt(self.sum_2 / self.count - self.avg ** 2)
+        else:
+            pass
 
-            x = F.relu(self.bn31_d(self.conv31_d(x)))
-            x = F.relu(self.bn32_d(self.conv32_d(x)))
-            x = F.relu(self.bn33_d(self.conv33_d(x)))
-            x = self.conv34_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[2])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[2])
-            x = torch.cat([x, feature_expand], dim=1)
 
-            x = F.relu(self.bn41_d(self.conv41_d(x)))
-            x = F.relu(self.bn42_d(self.conv42_d(x)))
-            x = F.relu(self.bn43_d(self.conv43_d(x)))
-            x = self.conv44_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[3])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[3])
-            x = torch.cat([x, feature_expand], dim=1)
+class Logger(object):
+    def __init__(self, path, int_form=':03d', float_form=':.4f'):
+        self.path = path
+        self.int_form = int_form
+        self.float_form = float_form
+        self.width = 0
 
-            x = F.relu(self.bn51_d(self.conv41_d(x)))
-            x = F.relu(self.bn52_d(self.conv42_d(x)))
-            x = F.relu(self.bn53_d(self.conv43_d(x)))
-            x = self.conv54_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[4])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[4])
-            x = torch.cat([x, feature_expand], dim=1)
+    def __len__(self):
+        try:
+            return len(self.read())
+        except:
+            return 0
 
-            x = F.relu(self.bn61_d(self.conv61_d(x)))
-            x = F.relu(self.bn62_d(self.conv62_d(x)))
-            x = F.relu(self.bn63_d(self.conv63_d(x)))
-            x = self.conv64_d(x)
-            x = x.view(-1, self.decoder_feature_dim, total_node[5])
-            x = F.tanh(x)
-            feature_expand = feature.unsqueeze(2).repeat(1, 1, total_node[5])
-            x = torch.cat([x, feature_expand], dim=1)
+    def write(self, values):
+        if not isinstance(values, Iterable):
+            values = [values]
+        if self.width == 0:
+            self.width = len(values)
+        assert self.width == len(values), 'Inconsistent number of items.'
+        line = ''
+        for v in values:
+            if isinstance(v, int):
+                line += '{{{}}} '.format(self.int_form).format(v)
+            elif isinstance(v, float):
+                line += '{{{}}} '.format(self.float_form).format(v)
+            elif isinstance(v, str):
+                line += '{} '.format(v)
+            else:
+                raise Exception('Not supported type.', v)
+        with open(self.path, 'a') as f:
+            f.write(line[:-1] + '\n')
 
-            x = F.relu(self.bn71_d(self.conv71_d(x)))
-            x = F.relu(self.bn72_d(self.conv72_d(x)))
-            x = F.relu(self.bn73_d(self.conv73_d(x)))
-            x = self.conv74_d(x)
-            x = x.view(-1, 3, self.npts)
-            x = F.tanh(x)
+    def read(self):
+        with open(self.path, 'r') as f:
+            log = []
+            for line in f:
+                values = []
+                for v in line.split(' '):
+                    try:
+                        v = float(v)
+                    except:
+                        pass
+                    values.append(v)
+                log.append(values)
+        return log
 
-            return x
+def draw_curve(work_dir, train_logger, test_logger):
+        train_logger = train_logger.read()
+        test_logger = test_logger.read()
+        epoch, train_loss = zip(*train_logger)
+        epoch,test_loss = zip(*test_logger)
 
-def get_arch(tree_arch, npts):
-    logmult = int(math.log2(npts/2048))
-    assert 2048*(2**(logmult)) == npts, "Number of points is %d, expected 2048x(2^n)" % (npts)
-    arch = tree_arch
-    while logmult > 0:
-        last_min_pos = np.where(arch==np.min(arch))[0][-1]
-        arch[last_min_pos]*=2
-        logmult -= 1
-    return arch
+        plt.plot(epoch, train_loss, color='blue', label="Train Loss")
+        plt.plot(epoch, test_loss, color='red', label="Test Loss")
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title("Loss Curve")
+        plt.legend()
+        plt.grid(True)
+        plt.savefig(work_dir + '/loss_curve.png')
+        plt.close()
