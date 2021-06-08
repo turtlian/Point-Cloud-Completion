@@ -28,7 +28,6 @@ args = parser.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
 
 # load setting
-
 path = args.model_path.split('/')[1]
 path = os.path.join(path, 'configuration.json')
 with open(path, 'r') as f:
@@ -48,7 +47,6 @@ elif args.data == 'kitti':
     args.p_class = 'kitti'
 
 test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=4)
-
 
 # load trained model & loss
 if model == 'topnet':
