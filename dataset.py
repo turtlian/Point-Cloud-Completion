@@ -5,10 +5,11 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import open3d
 import numpy as np
+import emdaug
 
 class ShapeNetDataset(Dataset):
     def __init__(self, data_path, point_class='all', mode='train', scaling=None, rotation=False, mirror_prob=None,
-                 crop_prob=None, num_coarse = 1024, num_dense = 16384):
+                 crop_prob=None, num_coarse = 1024, num_dense = 16384, emd = False):
 
         self.mode = mode
         self.partial_list = []
@@ -36,13 +37,16 @@ class ShapeNetDataset(Dataset):
                 self.partial_list.append(load_h5_file(path))
                 self.target_list.append(load_h5_file(self.target_path_list[i]))
         else :
-            self.data_path = os.path.join(data_path, self.mode + '.list')
-            with open(self.data_path, 'r') as f:
-                for line in f:
-                    partial = os.path.join(data_path, self.mode, 'partial', line.rstrip() + '.h5')
-                    target = os.path.join(data_path, self.mode, 'gt', line.rstrip() + '.h5')
-                    self.partial_list.append(load_h5_file(partial))
-                    self.target_list.append(load_h5_file(target))
+            if emd == True:
+                self.partial_list, self.target_list = emdaug.main()
+            else:
+                self.data_path = os.path.join(data_path, self.mode + '.list')
+                with open(self.data_path, 'r') as f:
+                    for line in f:
+                        partial = os.path.join(data_path, self.mode, 'partial', line.rstrip() + '.h5')
+                        target = os.path.join(data_path, self.mode, 'gt', line.rstrip() + '.h5')
+                        self.partial_list.append(load_h5_file(partial))
+                        self.target_list.append(load_h5_file(target))
 
     def __len__(self):
         return len(self.partial_list)
