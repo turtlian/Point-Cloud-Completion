@@ -64,7 +64,6 @@ class ShapeNetDataset(Dataset):
 
 
 # Kitti contains only test data
-# normalization
 class KittiDataset(Dataset):
     def __init__(self, data_path):
 
