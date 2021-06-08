@@ -14,7 +14,7 @@ import numpy as np
 
 parser = argparse.ArgumentParser(description='Point Cloud Completion Project')
 parser.add_argument('--save_path', default='./exp', type=str,
-                    help='datapath')
+                    help='savepath')
 parser.add_argument('--data_path', default='./shapenet', type=str,
                     help='datapath')
 parser.add_argument('--npts', default=16384, type=int,
@@ -47,6 +47,8 @@ parser.add_argument('--crop_prob', default=None, type=float,
                     help='Probability of cropping')
 parser.add_argument('--mixup_prob', default=None, type=float,
                     help='Probability of mixup')
+parser.add_argument('--emd', default=False, type=bool,
+                    help='mixup using emd')
 parser.add_argument('--gpu_id', default='1', type=str, help='devices')
 args = parser.parse_args()
 
@@ -119,7 +121,7 @@ def main():
     train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', point_class = 'all',
                                             scaling = args.scaling, rotation = args.rotation,
                                             mirror_prob = args.mirror_prob, crop_prob = args.crop_prob,
-                                            num_coarse = args.coarse, num_dense = args.npts)
+                                            num_coarse = args.coarse, num_dense = args.npts, emd = args.emd)
     val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val', point_class = 'all')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
