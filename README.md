@@ -105,3 +105,8 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 
 ### Quantitative Results
 ![image](https://user-images.githubusercontent.com/62421163/121050357-7773f300-c7f3-11eb-828b-82ff37700e4e.png)
+
+<hr/>
+
+### Example of Augmented Data
+![image](https://user-images.githubusercontent.com/62421163/121050357-7773f300-c7f3-11eb-828b-82ff37700e4e.png)
