@@ -109,4 +109,4 @@ python evaluate.py --gpu_id 0 --model_path /pretrained-model/path --data_path /d
 <hr/>
 
 ### Example of Augmented Data
-![image](https://user-images.githubusercontent.com/62421163/163810988-fc19ccfc-edac-4bdd-91a9-4e24fcb6a15b.png width="150" height="300"/)
+![image](https://user-images.githubusercontent.com/62421163/163810988-fc19ccfc-edac-4bdd-91a9-4e24fcb6a15b.png)
