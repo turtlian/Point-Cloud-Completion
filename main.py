@@ -1,244 +1,146 @@
-import h5py
-import numpy as np
-import transforms3d
-import random
-import math
-from matplotlib import pyplot as plt
-from collections import Iterable
+import dataset
+from torch.utils.data import DataLoader
+from model import TopNet, PCN
+from loss import chamfer_distance
+import os
 import torch
-import random
+import argparse
+import torch.optim as optim
+from utils import Logger, AverageMeter, draw_curve
+import json
+import torch.nn as nn
+from torch.optim import lr_scheduler
 
-# data
-def load_h5_file(path):
-    '''Load point cloud data from h5 file'''
-    f = h5py.File(path, 'r')
-    point_data = np.array(f['data'], dtype = np.float64)
-    f.close()
-
-    return point_data
-
-def pc_normalize(pc):
-    centroid = np.mean(pc, axis=0)
-    pc = pc - centroid
-    m = np.max(np.sqrt(np.sum(pc**2, axis=1)))
-    pc = pc / m
-    return pc
-
-def augmentation(point, target, scale, rotation, mirror_prob, crop_prob):
-    '''https://github.com/matthew-brett/transforms3d'''
-    transform_matrix = transforms3d.zooms.zfdir2mat(1)
-
-    if scale is not None:
-        scaling_num = random.uniform(1 / scale, scale)
-        transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(scaling_num), transform_matrix)
-    if rotation:
-        angle = random.uniform(0, 2*math.pi)
-        transform_matrix = np.dot(transforms3d.axangles.axangle2mat([0,1,0], angle), transform_matrix) #fix y-axis
-    if mirror_prob is not None:
-        # flip x&z, not z
-        if random.random() < mirror_prob/2:
-            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [1,0,0]), transform_matrix)
-        if random.random() < mirror_prob/2:
-            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
-        if random.random() < mirror_prob/2:
-            transform_matrix = np.dot(transforms3d.zooms.zfdir2mat(-1, [0,0,1]), transform_matrix)
-    if crop_prob is not None and np.random.rand(1) < crop_prob:
-        point_c = pc_normalize(point[:, 0:3])
-        target_c = pc_normalize(target[:, 0:3])
-        voxel_idx = np.random.randint(1, 5)
-        if voxel_idx == 1:
-            point_c=point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] >= 0]
-            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] >= 0]
-        elif voxel_idx == 2:
-            point_c = point_c[point_c[:, 0] >= 0];point_c = point_c[point_c[:, 2] <= 0]
-            target_c = target_c[target_c[:, 0] >= 0];target_c = target_c[target_c[:, 2] <= 0]
-        elif voxel_idx ==3:
-            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] >= 0]
-            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] >= 0]
-        elif voxel_idx ==4:
-            point_c = point_c[point_c[:, 0] <= 0];point_c = point_c[point_c[:, 2] <= 0]
-            target_c = target_c[target_c[:, 0] <= 0];target_c = target_c[target_c[:, 2] <= 0]
-        if point_c.shape[0] > 200 and point_c.shape[0] <= 1024:
-            try:
-                point = resample_pcd(point_c, 2048)
-                target = resample_pcd(target_c, 2048)
-            except ValueError:
-                print('')
-
-    return np.dot(point, transform_matrix), np.dot(target, transform_matrix)
+parser = argparse.ArgumentParser(description='Point Cloud Completion Project')
+parser.add_argument('--save_path', default='./exp', type=str,
+                    help='datapath')
+parser.add_argument('--data_path', default='./shapenet', type=str,
+                    help='datapath')
+parser.add_argument('--npts', default=16384, type=int,
+                    help='number of generated points')
+parser.add_argument('--coarse', default=1024, type=int,
+                    help='number of generated points')
+parser.add_argument('--alpha', default=0.5, type=int,
+                    help='coarse loss weight')
+parser.add_argument('--model', default='topnet', type=str,
+                    help='topnet or pcn')
+parser.add_argument('--embedding_dim', default=1024, type=int,
+                    help='embedding size')
+parser.add_argument('--batch_size', default=32, type=int,
+                    help='batch size')
+parser.add_argument('--optim', default='adagrad', type=str,
+                    help='optimizer')
+parser.add_argument('--lr', default=0.1e-2, type=float,
+                    help='learning rate')
+parser.add_argument('--epochs', default=300, type=int,
+                    help='train epoch')
+parser.add_argument('--weight_decay', default=0.000001, type=float,
+                    help='weight_decay')
+parser.add_argument('--scaling', default=None, type=float,
+                    help='scaling size')
+parser.add_argument('--rotation', default=False, type=bool,
+                    help='If "true", randomly rotate the point')
+parser.add_argument('--mirror_prob', default=None, type=float,
+                    help='Probability of randomly mirroring points')
+parser.add_argument('--gpu_id', default='1', type=str, help='devices')
+args = parser.parse_args()
 
 
-def resample_pcd(pcd, n):
-    """Drop or duplicate points so that pcd has exactly n points"""
-    idx = np.random.permutation(pcd.shape[0])
-    if idx.shape[0] < n:
-        idx = np.concatenate([idx, np.random.randint(pcd.shape[0], size=n-pcd.shape[0])])
+def train(model, trn_loader, criterion, optimizer, epoch, num_epoch, train_logger):
+    model.train()
+    train_loss = AverageMeter()
+    for i, (data, target, coarsegt, densegt) in enumerate(trn_loader):
+        data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
+        output = model(data)
+        if args.model == 'topnet':
+            loss, _ = criterion(output.transpose(1,2), densegt.transpose(1,2))
+        elif args.model == 'pcn':
+            loss1, _ = criterion(output[1].transpose(1,2), coarsegt.transpose(1,2)) # y_coarse
+            loss2, _ = criterion(output[2].transpose(1, 2), densegt.transpose(1, 2)) # y_detail
+            loss = args.alpha * loss1 + loss2
+        train_loss.update(loss.item()*10000)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    return pcd[idx[:n]]
-
-def mix_up(partial, coarsegt, densegt, mixup, alpha):
-    if mixup == 'naive':
-        '''
-        2개의 input point cloud를 불러옵니다. s1,s2
-        s1에서 2048*gamma만큼의 points를 random하게 가져오고 
-        s2에서 2048*(1-gamma)만큼의 points를 random하게 가져옵니다
-        둘을 concat
-        '''
-        # shuffle idx
-        rand_idx = torch.randperm(partial.size(0))
-        partial_shuffle = partial[rand_idx]
-        coarsegt_shuffle = coarsegt[rand_idx]
-        densegt_shuffle = densegt[rand_idx]
-
-        # mixup : 1st+2nd, 2nd+3rd, 3rd+4th.....
-        gamma = np.random.beta(alpha,alpha) # 0~1
-        split = int(2048*gamma)
-        partial = torch.cat([partial[:, :, 0:split],partial_shuffle[:, :, split:]],dim=2)
-        coarsegt = torch.cat([coarsegt[:, :, 0:split], coarsegt_shuffle[:, :, split:]], dim=2)
-        densegt = torch.cat([densegt[:, :, 0:split], densegt_shuffle[:, :, split:]], dim=2)
-
-    elif mixup == 'emd':
-        print('EEEEEMMMMMMMDDDD!!!')
-
-    return partial, coarsegt, densegt
+        if i % 10 == 0 and i != 0:
+            print('Epoch : [{0}/{1}] [{2}/{3}]  Train Loss : {loss:.4f}'.format(
+                epoch, num_epoch, i, len(trn_loader), loss=loss*10000))
+    train_logger.write([epoch, train_loss.avg])
 
 
-# visualization
-'''https://github.com/lynetcha/completion3d/blob/1dc8ffac02c4ec49afb33c41f13dd5f90abdf5b7/shared/vis.py'''
+def test(model, tst_loader, criterion, epoch, num_epoch, val_logger):
+    model.eval()
+    val_loss = AverageMeter()
+    with torch.no_grad():
+        for i, (data, target, coarsegt, densegt) in enumerate(tst_loader):
+            data, target, coarsegt, densegt = data.cuda(), target.cuda(), coarsegt.cuda(), densegt.cuda()
+            output = model(data)
+            if args.model == 'topnet':
+                loss, _ = criterion(output.transpose(1, 2), densegt.transpose(1, 2))
+            elif args.model == 'pcn':
+                loss1, _ = criterion(output[1].transpose(1, 2), coarsegt.transpose(1, 2))
+                loss2, _ = criterion(output[2].transpose(1, 2), densegt.transpose(1, 2))
+                loss = args.alpha * loss1 + loss2
+            val_loss.update(loss.item()*10000)
 
-def plot_xyz(xyz, zdir='y', cmap='Reds', xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    elev = 30
-    azim = -45
-    ax.view_init(elev, azim)
-    xyz = xyz.T
-    ax.scatter(xyz[:, 0], xyz[:, 1], xyz[:,2], c=xyz[:,0], s=20, zdir=zdir, cmap=cmap, vmin=-1, vmax=0.5)
-    ax.set_axis_off()
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_zlim(zlim)
-    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
-    if save_path is not None:
-        fig.savefig(save_path)
-        plt.close(fig)
+        print("=================== TEST(Validation) Start ====================")
+        print('Epoch : [{0}/{1}]  Test Loss : {loss:.4f}'.format(
+                epoch, num_epoch, loss=val_loss.avg))
+        print("=================== TEST(Validation) End ======================")
+        val_logger.write([epoch, val_loss.avg])
+
+
+def main():
+    save_path=args.save_path
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+        # Save configuration
+        with open(save_path + '/configuration.json', 'w') as f:
+            json.dump(args.__dict__, f, indent=2)
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_id
+
+    # define architecture
+    if args.model == 'topnet':
+        network = TopNet(encoder_feature_dim = args.embedding_dim, decoder_feature_dim = 8, npts = args.npts).cuda()
     else:
-        plt.show()
+        network = PCN(encoder_feature_dim = args.embedding_dim, num_coarse = args.coarse ,num_dense = args.npts).cuda()
+    network = nn.DataParallel(network).cuda()
 
-def plot_pcds(pcds, titles, use_color=[],color=None, suptitle='', sizes=None, cmap='Reds', zdir='y',
-                         xlim=(-0.3, 0.3), ylim=(-0.3, 0.3), zlim=(-0.3, 0.3), save_path=None):
-    if sizes is None:
-        sizes = [5 for i in range(len(pcds))]
-    fig = plt.figure(figsize=(len(pcds) * 3, 3))
-    for i in range(1):
-        elev = 30
-        azim = -45 + 90 * i
-        for j, (pcd, size) in enumerate(zip(pcds, sizes)):
-            if color is None or not use_color[j]:
-                pcd = pcd.T
-                clr = pcd[:, 0]
+    # load dataset
+    train_dataset = dataset.ShapeNetDataset(args.data_path, mode='train', point_class = 'all',
+                                            scaling = args.scaling, rotation = args.rotation,
+                                            mirror_prob = args.mirror_prob, num_coarse = args.coarse, num_dense = args.npts)
+    val_dataset = dataset.ShapeNetDataset(args.data_path, mode='val', point_class = 'all')
 
-            ax = fig.add_subplot(1, len(pcds), i * len(pcds) + j + 1, projection='3d')
-            ax.view_init(elev, azim)
-            ax.scatter(pcd[:, 0], pcd[:, 1], pcd[:, 2], zdir=zdir, c=clr, s=size, cmap=cmap, vmin=-1, vmax=0.5)
-            ax.set_title(titles[j])
-            ax.set_axis_off()
-            ax.set_xlim(xlim)
-            ax.set_ylim(ylim)
-            ax.set_zlim(zlim)
-    plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05, top=0.9, wspace=0.1, hspace=0.1)
-    plt.suptitle(suptitle)
-    if save_path is not None:
-        fig.savefig(save_path)
-        plt.close(fig)
-    else:
-        plt.show()
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+    print(f"Data Loaded {len(train_dataset)}")
 
+    # define criterion
+    criterion = chamfer_distance().cuda()
+    if args.optim == 'sgd':
+        optimizer = optim.SGD(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optim == 'adam':
+        optimizer = optim.Adam(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    elif args.optim == 'adagrad':
+        optimizer = optim.Adagrad(network.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-# logging
-class AverageMeter(object):
+    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], gamma=0.7)
 
-    def __init__(self):
-        self.reset()
+    # logger
+    train_logger = Logger(os.path.join(save_path, 'train_loss.log'))
+    val_logger = Logger(os.path.join(save_path, 'val_loss.log'))
 
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.sum_2 = 0  # sum of squares
-        self.count = 0
-        self.std = 0
+    # training & validation
+    for epoch in range(1, args.epochs+1):
+        train(network, train_loader, criterion ,optimizer, epoch, args.epochs, train_logger)
+        test(network, val_loader, criterion, epoch, args.epochs, val_logger)
+        scheduler.step()
+        if epoch%20 == 0 or epoch == args.epoch :
+            torch.save(network.state_dict(), '{0}/{1}_{2}.pth'.format(save_path, args.model ,epoch))
+    draw_curve(save_path, train_logger, val_logger)
+    print("Process complete")
 
-    def update(self, val, n=1):
-        if val != None:  # update if val is not None
-            self.val = val
-            self.sum += val * n
-            self.sum_2 += val ** 2 * n
-            self.count += n
-            self.avg = self.sum / self.count
-            self.std = np.sqrt(self.sum_2 / self.count - self.avg ** 2)
-        else:
-            pass
-
-
-class Logger(object):
-    def __init__(self, path, int_form=':03d', float_form=':.4f'):
-        self.path = path
-        self.int_form = int_form
-        self.float_form = float_form
-        self.width = 0
-
-    def __len__(self):
-        try:
-            return len(self.read())
-        except:
-            return 0
-
-    def write(self, values):
-        if not isinstance(values, Iterable):
-            values = [values]
-        if self.width == 0:
-            self.width = len(values)
-        assert self.width == len(values), 'Inconsistent number of items.'
-        line = ''
-        for v in values:
-            if isinstance(v, int):
-                line += '{{{}}} '.format(self.int_form).format(v)
-            elif isinstance(v, float):
-                line += '{{{}}} '.format(self.float_form).format(v)
-            elif isinstance(v, str):
-                line += '{} '.format(v)
-            else:
-                raise Exception('Not supported type.', v)
-        with open(self.path, 'a') as f:
-            f.write(line[:-1] + '\n')
-
-    def read(self):
-        with open(self.path, 'r') as f:
-            log = []
-            for line in f:
-                values = []
-                for v in line.split(' '):
-                    try:
-                        v = float(v)
-                    except:
-                        pass
-                    values.append(v)
-                log.append(values)
-        return log
-
-def draw_curve(work_dir, train_logger, test_logger):
-        train_logger = train_logger.read()
-        test_logger = test_logger.read()
-        epoch, train_loss = zip(*train_logger)
-        epoch,test_loss = zip(*test_logger)
-
-        plt.plot(epoch, train_loss, color='blue', label="Train Loss")
-        plt.plot(epoch, test_loss, color='red', label="Test Loss")
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title("Loss Curve")
-        plt.legend()
-        plt.grid(True)
-        plt.savefig(work_dir + '/loss_curve.png')
-        plt.close()
+if __name__ == '__main__':
+    main()
